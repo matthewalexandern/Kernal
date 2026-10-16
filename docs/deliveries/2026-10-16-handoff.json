@@ -1,0 +1,39 @@
+{
+  "assets": [
+    {
+      "bytes": 9754,
+      "download_url": "https://github.com/matthewalexandern/Kernal/releases/download/untagged-5cf042ef7cdf26cd7f7d/KYTHOS-CONTINUATION-HANDOFF.md",
+      "github_asset_id": 648501352,
+      "independent_download_sha256": "0f3dcacebb79bcbf65501b18da3f2a3eb8710872cddba91545f437b4fccc297d",
+      "name": "KYTHOS-CONTINUATION-HANDOFF.md",
+      "sha256": "0f3dcacebb79bcbf65501b18da3f2a3eb8710872cddba91545f437b4fccc297d"
+    },
+    {
+      "bytes": 97,
+      "download_url": "https://github.com/matthewalexandern/Kernal/releases/download/untagged-5cf042ef7cdf26cd7f7d/KYTHOS-CONTINUATION-HANDOFF.md.sha256",
+      "github_asset_id": 648501408,
+      "independent_download_sha256": "a8c833032276dd568a140581e38c3ef6f5488c4fae56a0a9c5ec328d7d28f102",
+      "name": "KYTHOS-CONTINUATION-HANDOFF.md.sha256",
+      "sha256": "a8c833032276dd568a140581e38c3ef6f5488c4fae56a0a9c5ec328d7d28f102"
+    }
+  ],
+  "draft": true,
+  "image_source_commit": "cc472f571c2784a105ee12e5df408275ef14fa37",
+  "original_assets_unchanged": "All 14 original asset IDs, byte sizes and SHA256 digests confirmed unchanged; their full download proof remains in original receipt",
+  "original_delivery_assets": 14,
+  "original_delivery_receipt": "docs/deliveries/2026-10-16-cc472f5.json",
+  "pre_handoff_source_main": "e7f7e0f75ec5480e917967d18b0ef97849124b6c",
+  "prerelease": true,
+  "private": true,
+  "release_id": 415294757,
+  "release_total_asset_count": 16,
+  "release_url": "https://github.com/matthewalexandern/Kernal/releases/tag/untagged-5cf042ef7cdf26cd7f7d",
+  "repository": "matthewalexandern/Kernal",
+  "result": "PASS",
+  "schema": 1,
+  "supplemental_asset_count": 2,
+  "tag": "v0.1.0-preview-cc472f5",
+  "tracked_handoff": "docs/CONTINUATION-HANDOFF.md",
+  "verification": "Both supplemental assets independently downloaded in full and SHA256 verified; final API ID/state/size/digest check passed",
+  "verified_utc": "2026-10-16T20:17:42Z"
+}

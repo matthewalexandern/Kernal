@@ -18,6 +18,13 @@ check confirmed the same asset IDs, sizes and digests, and the remote version
 tag points to the exact release target above. See the
 [verified delivery receipt](deliveries/2026-10-16-cc472f5.json).
 
+The [continuation handoff](CONTINUATION-HANDOFF.md) provides the next-chat
+prompt, project constraints and ordered ARM64 acceptance tasks. Its release
+copy `KYTHOS-CONTINUATION-HANDOFF.md` and separate `.sha256` are supplemental
+assets outside the original 14-file delivery manifest. Both were independently
+downloaded and hash verified; see the
+[supplemental delivery receipt](deliveries/2026-10-16-handoff.json).
+
 ## Check and download the delivery
 
 Check the release before downloading:
