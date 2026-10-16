@@ -1,0 +1,198 @@
+/* KythOS Kernal — native Calamares 3.3 styling.
+ * Calamares loads this file from the branding directory.
+ * Keep native controls, focus, warnings, and disabled states visible.
+ * SPDX-License-Identifier: MIT
+ */
+
+QWidget {
+    background-color: #0c1522;
+    color: #e5eef5;
+    font-family: "DejaVu Sans";
+    font-size: 13px;
+    selection-background-color: #00cfe4;
+    selection-color: #001820;
+}
+QWidget#sidebarApp {
+    background-color: #07101b;
+    border-right: 1px solid #203044;
+}
+QWidget#sidebarApp QLabel, QWidget#sidebarApp QListView {
+    background-color: transparent; border: none;
+}
+QLabel#logoApp { margin-top: 10px; margin-bottom: 10px; }
+QLabel { background-color: transparent; }
+QLabel:disabled { color: #8496a8; }
+QLabel#mainText { color: #f4faff; font-size: 18px; }
+QLabel#summaryTitle { color: #b5c6d5; padding: 12px 0; }
+QLabel#summaryItemTitle {
+    color: #f4faff; font-size: 22px; font-weight: 500; padding: 10px 0 4px 0;
+}
+QLabel#summaryItemBody {
+    background-color: #111f30; border: 1px solid #263a50;
+    border-radius: 7px; padding: 10px;
+}
+QLabel#bootInfoLabel, QLabel#deviceInfoLabel, QLabel#mountPointExplanation { color: #b5c6d5; }
+QLabel#labelFullNameError, QLabel#labelUsernameError, QLabel#labelHostnameError,
+QLabel#labelUserPasswordError, QLabel#labelRootPasswordError { color: #ffb5b5; }
+QLabel#kythosStorageWarning {
+    color: #ffdda5; background-color: #322919;
+    border: 1px solid #8b6a37; border-radius: 5px; padding: 9px;
+}
+
+QPushButton, QToolButton {
+    color: #e5eef5; background-color: #17283a;
+    border: 1px solid #365168; border-radius: 5px;
+    padding: 7px 10px; min-height: 16px;
+}
+QPushButton:hover, QToolButton:hover { background-color: #203a50; border-color: #00b7cd; }
+QPushButton:pressed, QToolButton:pressed { background-color: #0d2030; border-color: #00d5e8; }
+QPushButton:focus, QToolButton:focus { border: 2px solid #68e6f0; padding: 6px 9px; }
+QPushButton:default, QPushButton#view-button-next, QPushButton#view-button-done {
+    background-color: #00cfe4; color: #001820; border-color: #00cfe4; font-weight: 600;
+}
+QPushButton:default:hover, QPushButton#view-button-next:hover,
+QPushButton#view-button-done:hover { background-color: #3ae4ef; border-color: #3ae4ef; }
+QPushButton:default:focus, QPushButton#view-button-next:focus,
+QPushButton#view-button-done:focus { border-color: #e4fdff; }
+QPushButton:disabled, QToolButton:disabled,
+QPushButton#view-button-next:disabled, QPushButton#view-button-done:disabled {
+    color: #8295a8; background-color: #122031; border: 1px solid #2a3c50;
+}
+QPushButton#aboutButton {
+    background-color: transparent; color: #a9bac9; border-color: transparent; margin: 8px;
+}
+QPushButton#aboutButton:hover, QPushButton#aboutButton:focus { color: #e5eef5; border-color: #365168; }
+
+QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QDateTimeEdit {
+    background-color: #07111e; color: #edf6fc;
+    border: 1px solid #365168; border-radius: 4px;
+    padding: 5px 8px; min-height: 18px; placeholder-text-color: #8da2b6;
+}
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus,
+QDoubleSpinBox:focus, QDateTimeEdit:focus { border-color: #00d5e8; }
+QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled,
+QDoubleSpinBox:disabled, QDateTimeEdit:disabled {
+    color: #8295a8; background-color: #122031; border-color: #2a3c50;
+}
+QLineEdit[readOnly="true"] { color: #b5c6d5; }
+QComboBox { padding-right: 26px; }
+QComboBox::drop-down {
+    width: 23px; border-left: 1px solid #365168;
+    border-top-right-radius: 4px; border-bottom-right-radius: 4px;
+    background-color: #17283a;
+}
+QComboBox::drop-down:hover { background-color: #203a50; }
+QComboBox::down-arrow {
+    image: url(/etc/calamares/branding/kythos/chevron.svg);
+    width: 16px; height: 16px;
+}
+QComboBox QAbstractItemView {
+    color: #edf6fc; background-color: #111f30;
+    selection-background-color: #00cfe4; selection-color: #001820;
+    border: 1px solid #49647c; padding: 4px; outline: 0;
+}
+QSpinBox::up-button, QDoubleSpinBox::up-button,
+QSpinBox::down-button, QDoubleSpinBox::down-button {
+    width: 20px; background-color: #17283a; border-left: 1px solid #365168;
+}
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover { background-color: #284259; }
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {
+    image: url(/etc/calamares/branding/kythos/chevron-up.svg);
+    width: 12px; height: 12px;
+}
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
+    image: url(/etc/calamares/branding/kythos/chevron.svg);
+    width: 12px; height: 12px;
+}
+QSpinBox, QDoubleSpinBox { padding-right: 24px; }
+
+QCheckBox, QRadioButton { spacing: 8px; padding: 3px 0; }
+QCheckBox:focus, QRadioButton:focus {
+    color: #83edf5; background-color: #112638; border-radius: 3px;
+}
+QCheckBox:disabled, QRadioButton:disabled { color: #8295a8; }
+QCheckBox::indicator, QRadioButton::indicator { width: 17px; height: 17px; }
+QCheckBox::indicator {
+    background-color: #07111e; border: 1px solid #57748c; border-radius: 3px;
+}
+QCheckBox::indicator:checked {
+    image: url(/etc/calamares/branding/kythos/check.svg);
+    border-color: #00cfe4; background-color: #00cfe4;
+}
+QCheckBox::indicator:indeterminate { background-color: #7edce6; border-color: #00cfe4; }
+QCheckBox::indicator:disabled { background-color: #122031; border-color: #365168; }
+QCheckBox::indicator:checked:disabled { image: none; background-color: #6d899b; }
+QRadioButton::indicator {
+    background-color: #07111e; border: 1px solid #57748c; border-radius: 9px;
+}
+QRadioButton::indicator:checked {
+    background-color: #00cfe4; border: 4px solid #204d60; border-radius: 9px;
+}
+QRadioButton::indicator:disabled { background-color: #122031; border-color: #365168; }
+QRadioButton::indicator:checked:disabled { background-color: #6d899b; }
+
+QAbstractItemView, QTextEdit, QPlainTextEdit, QTextBrowser {
+    color: #e5eef5; background-color: #07111e; alternate-background-color: #101e2e;
+    border: 1px solid #2e435a; border-radius: 4px;
+    selection-background-color: #00cfe4; selection-color: #001820;
+}
+QAbstractItemView::item { padding: 4px 5px; }
+QAbstractItemView::item:hover { background-color: #173248; }
+QAbstractItemView::item:selected { background-color: #00cfe4; color: #001820; }
+QAbstractItemView::indicator {
+    width: 17px; height: 17px;
+    background-color: #07111e; border: 1px solid #57748c; border-radius: 3px;
+}
+QAbstractItemView::indicator:checked {
+    image: url(/etc/calamares/branding/kythos/check.svg);
+    background-color: #00cfe4; border-color: #00cfe4;
+}
+QAbstractItemView:focus, QTextEdit:focus, QPlainTextEdit:focus { border-color: #00d5e8; }
+QHeaderView, QHeaderView::section, QTableCornerButton::section {
+    background-color: #17283a; color: #d0dfeb; border: none;
+}
+QHeaderView::section { padding: 7px 6px; border-right: 1px solid #30465c; border-bottom: 1px solid #30465c; }
+QTreeView::branch { background-color: transparent; }
+
+QScrollArea { border: none; background-color: #0c1522; }
+QScrollBar:vertical { background: #0c1522; width: 10px; margin: 0; }
+QScrollBar:horizontal { background: #0c1522; height: 10px; margin: 0; }
+QScrollBar::handle:vertical { background: #405b73; min-height: 25px; border-radius: 4px; }
+QScrollBar::handle:horizontal { background: #405b73; min-width: 25px; border-radius: 4px; }
+QScrollBar::handle:hover { background: #6185a0; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
+QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
+
+QGroupBox { border: 1px solid #2e435a; border-radius: 6px; margin-top: 13px; padding: 12px; }
+QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }
+QTabWidget::pane { border: 1px solid #2e435a; border-radius: 5px; }
+QTabBar::tab { background: #101e2e; color: #a9bac9; padding: 9px 14px; border: 1px solid #2e435a; }
+QTabBar::tab:selected { background: #173248; color: #83edf5; }
+QTabBar::tab:focus { border-color: #00d5e8; }
+QProgressBar {
+    border: 1px solid #2e435a; border-radius: 5px; background-color: #07111e;
+    color: #e5eef5; text-align: center; min-height: 20px;
+}
+QProgressBar::chunk { background-color: #008da2; border-radius: 4px; }
+QSlider::groove:horizontal { height: 5px; background: #365168; border-radius: 2px; }
+QSlider::handle:horizontal { background: #00d5e8; width: 15px; margin: -5px 0; border-radius: 7px; }
+QSlider:focus { background-color: #112638; }
+
+QMenu, QToolTip { color: #e5eef5; background-color: #111f30; border: 1px solid #49647c; padding: 6px; }
+QMenu::item { padding: 7px 24px 7px 12px; }
+QMenu::item:selected { background-color: #00cfe4; color: #001820; }
+QMenu::item:disabled { color: #8295a8; }
+QMenu::separator { height: 1px; background-color: #365168; margin: 4px; }
+QDialog, QMessageBox { background-color: #0c1522; }
+QDialogButtonBox { background-color: transparent; }
+QFrame[frameShape="4"], QFrame[frameShape="5"] { color: #263a50; }
+
+/* The upstream partition label painter draws black/gray text directly.
+ * A pale diagram canvas preserves contrast for this custom painter.
+ * Disk rows and all editing controls stay dark.
+ */
+QAbstractItemView#partitionLabel, QAbstractItemView#partitionLabel QWidget {
+    background-color: #e0e8ef; color: #101e2e; border: none; border-radius: 3px;
+}

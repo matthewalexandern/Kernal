@@ -1,28 +1,146 @@
 import QtQuick 2.7
 import QtQuick.Controls 2.2
 
-Item {
+Rectangle {
+    color: "#0c1522"
+
     Flickable {
+        id: viewport
         anchors.fill: parent
         anchors.margins: 24
         contentWidth: width
-        contentHeight: information.implicitHeight
+        contentHeight: information.height
         clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        focus: true
+        Keys.onPressed: function(event) {
+            var step = 0
+            if (event.key === Qt.Key_Down) step = 48
+            else if (event.key === Qt.Key_Up) step = -48
+            else if (event.key === Qt.Key_PageDown) step = height * 0.8
+            else if (event.key === Qt.Key_PageUp) step = -height * 0.8
+            else if (event.key === Qt.Key_Home) step = -contentHeight
+            else if (event.key === Qt.Key_End) step = contentHeight
+            else return
+            contentY = Math.max(0, Math.min(Math.max(0, contentHeight - height), contentY + step))
+            event.accepted = true
+        }
         ScrollBar.vertical: ScrollBar { }
-        Text {
+
+        Column {
             id: information
-            width: parent.width
-            textFormat: Text.RichText
-            wrapMode: Text.WordWrap
-            font.pixelSize: 19
-            color: "#17232b"
-            text: qsTr("<h2>Choose the installation path you need</h2>"
-                + "<p>This Calamares installer prepares the <b>KythOS Kernal common base</b>: a terminal system with the supported kernel, broad drivers and firmware, networking, SSH, encryption tools, and audit controls.</p>"
-                + "<p><b>Partitioning is your choice:</b> use the native guided, alongside, replacement, or manual partitioning options. Guided installations suggest a 2 GiB boot partition and use the remaining selected space for the system. These are guided defaults; manual partitioning lets you choose your own sizes and mount points.</p>"
-                + "<p><b>Encryption and boot:</b> LUKS2-encrypted root requires a separate unencrypted <b>/boot</b> for the supported signed GRUB chain. An unencrypted root can contain its own boot files. With root encryption, use encrypted swap partitions, a swap file inside encrypted root, or no swap. The native partition page checks these boot requirements before proceeding.</p>"
-                + "<p>The ISO also retains the advanced graphical and text installer as an alternative installation path.</p>"
-                + "<p><b>Encryption:</b> store your passphrase safely. TPM2 enrollment is an optional post-install step using <b>kythos-enroll-tpm2</b>, with a tested recovery passphrase required.</p>"
-                + "<p>The temporary live desktop and installer are removed from the installed common base. <b>Log in automatically</b> on the Users page is optional and applies to the local terminal on tty1. It is off by default; SSH still requires your password or key. Desktop, server, hypervisor, and AI editions build on this same foundation.</p>")
+            width: viewport.width - 12
+            spacing: 16
+
+            Column {
+                width: parent.width
+                spacing: 8
+                Text {
+                    text: qsTr("YOUR INSTALLATION")
+                    color: "#00d5e8"
+                    font.family: "DejaVu Sans"
+                    font.pixelSize: 11
+                    font.weight: Font.DemiBold
+                    font.letterSpacing: 1.5
+                }
+                Text {
+                    width: parent.width
+                    text: qsTr("A foundation you control.")
+                    color: "#f4faff"
+                    font.family: "DejaVu Sans"
+                    font.pixelSize: 29
+                    font.weight: Font.DemiBold
+                    wrapMode: Text.WordWrap
+                }
+                Text {
+                    width: parent.width
+                    text: qsTr("Choose your storage, protect your system, and build from one maintained common base.")
+                    color: "#b5c6d5"
+                    font.family: "DejaVu Sans"
+                    font.pixelSize: 14
+                    wrapMode: Text.WordWrap
+                    lineHeight: 1.2
+                }
+            }
+
+            Grid {
+                id: cards
+                width: parent.width
+                columns: width >= 630 ? 2 : 1
+                spacing: 12
+                property real cardWidth: (width - (columns - 1) * spacing) / columns
+                Repeater {
+                    model: [
+                        {
+                            number: "01", title: qsTr("Storage, your way"),
+                            body: qsTr("Use guided or manual partitioning. Alongside and replacement appear when your disk allows them. Guided boot sizes are defaults; manual mode lets you set your own sizes and mount points.")
+                        },
+                        {
+                            number: "02", title: qsTr("Encryption with recovery"),
+                            body: qsTr("LUKS2 is optional. Encrypted root needs a separate unencrypted /boot, plus encrypted swap or no swap. Keep your passphrase safe. Optional TPM2 enrollment comes after installation.")
+                        },
+                        {
+                            number: "03", title: qsTr("Your account, your keys"),
+                            body: qsTr("Set a password for recovery and SSH. After installation, enroll a FIDO2 key for local console login with kythos-fido-login. Automatic local login is optional and off by default.")
+                        },
+                        {
+                            number: "04", title: qsTr("One base, four directions"),
+                            body: qsTr("Start at a terminal with a maintained kernel, broad drivers and firmware, networking, SSH, and audit tools. Add your desktop, server, hypervisor, or AI stack. The live desktop is removed.")
+                        }
+                    ]
+                    Rectangle {
+                        width: cards.cardWidth
+                        height: Math.max(190, cardContent.height + 36)
+                        radius: 8
+                        color: "#111f30"
+                        border.color: "#263a50"
+                        Column {
+                            id: cardContent
+                            x: 18
+                            y: 18
+                            width: parent.width - 36
+                            spacing: 10
+                            Text {
+                                text: modelData.number
+                                color: "#00d5e8"
+                                font.family: "DejaVu Sans"
+                                font.pixelSize: 11
+                                font.weight: Font.DemiBold
+                                font.letterSpacing: 1
+                            }
+                            Text {
+                                width: parent.width
+                                text: modelData.title
+                                color: "#f4faff"
+                                font.family: "DejaVu Sans"
+                                font.pixelSize: 16
+                                font.weight: Font.DemiBold
+                                wrapMode: Text.WordWrap
+                            }
+                            Text {
+                                width: parent.width
+                                text: modelData.body
+                                color: "#b5c6d5"
+                                font.family: "DejaVu Sans"
+                                font.pixelSize: 13
+                                wrapMode: Text.WordWrap
+                                lineHeight: 1.2
+                            }
+                        }
+                    }
+                }
+            }
+
+            Text {
+                width: parent.width
+                text: qsTr("Review the full plan on Summary before the installer changes your disks.")
+                color: "#8da2b6"
+                font.family: "DejaVu Sans"
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+                lineHeight: 1.2
+                bottomPadding: 12
+            }
         }
     }
 }
