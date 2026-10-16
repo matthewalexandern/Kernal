@@ -1,0 +1,189 @@
+{
+  "schema": 1,
+  "record_kind": "source-validation-progress",
+  "product": "KythOS Kernal",
+  "version": "0.2.0",
+  "image_source": {
+    "commit": "b99b4b7ec90a11ef09ad3958e01ccc67363b55cd",
+    "tree": "25ffcb6c9ae1314e335e83fd084374134d97a049",
+    "debian_snapshot": "20261016T000000Z",
+    "bundle_name": "source-b99b4b7.bundle",
+    "bundle_sha256": "a989c07b180ff995e875bf2a575f530a45b8e0e4fd77e24cb809dafa30fde928"
+  },
+  "build_state": {
+    "base_amd64": "in-progress",
+    "base_arm64": "queued-after-amd64-export",
+    "final_pin_full_source_gate": {
+      "amd64": "passed-272-tests-21-suites-zero-skips-clean-checkout",
+      "arm64": "pending-queued-build"
+    },
+    "amd64_native_installer": "source-fetched-patch-no-fuzz-13-schemas-passed-cmake-underway",
+    "new_iso_artifacts": [],
+    "fresh_install_acceptance": "not-run-on-new-images",
+    "architecture_pair_gate": "pending-completed-artifacts"
+  },
+  "evidence": [
+    {
+      "label": "amd64-source-gate-b99b4b7",
+      "receipt": "amd64-source-gate.json",
+      "scope": "full-source-gate-on-immutable-final-pin",
+      "commit": "b99b4b7ec90a11ef09ad3958e01ccc67363b55cd",
+      "tree": "25ffcb6c9ae1314e335e83fd084374134d97a049",
+      "architecture": "amd64",
+      "command": "./scripts/validate-source.sh",
+      "tests": {
+        "suites": 21,
+        "ran": 272,
+        "passed": 272,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "checkout_clean_after_gate": true,
+      "unexpected_generated_source_files": false,
+      "shell_checks": "installer branding, login branding, TPM2 PCR parser, recovery topology passed",
+      "nftables_check": "passed-on-native-stock-debian-guest-kernel",
+      "subsequent_native_module_schema_checks": 13,
+      "native_module_build": "in-progress-no-compilation-success-claimed",
+      "result": "full-final-pin-source-gate-passed"
+    },
+    {
+      "label": "source-b99b4b7-input-verification",
+      "scope": "immutable-arm64-candidate-clone-input-verification",
+      "commit": "b99b4b7ec90a11ef09ad3958e01ccc67363b55cd",
+      "tree": "25ffcb6c9ae1314e335e83fd084374134d97a049",
+      "declared_inputs": 299,
+      "content_changes": 0,
+      "symlink_changes": 0,
+      "mode_changes_from_private_working_snapshot": 276,
+      "noncanonical_git_modes": 0,
+      "unexpected_paths": 0,
+      "missing_paths": 0,
+      "git_changes": 0,
+      "mode_policy": "The immutable clone uses canonical Git modes; the private working snapshot used account-specific modes.",
+      "result": "clean-input-bytes-and-symlink-targets-match"
+    },
+    {
+      "label": "arm64-plymouth-native-b99b4b7",
+      "scope": "targeted-native-plymouth-runtime-tests-at-final-pin",
+      "commit": "b99b4b7ec90a11ef09ad3958e01ccc67363b55cd",
+      "architecture": "arm64",
+      "plymouth_version": "24.004.60-5",
+      "command": "python3 tests/test-plymouth-runtime.py",
+      "tests": {
+        "ran": 3,
+        "passed": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "duration_seconds": 1.031
+      },
+      "result": "passed"
+    },
+    {
+      "label": "worktree-gate-20261016T210321Z-b055c6",
+      "scope": "full-source-gate-on-pre-pin-working-tree-snapshot",
+      "base_commit": "b340a9fafaeccbace96df81395d29e11ffe85c05",
+      "snapshot_archive_sha256": "207819f7180431ed571b125d2e5ec78265766b9d99f5fb94df0181651b0c6c1f",
+      "snapshot_manifest_sha256": "c6c02276490ee079281ae04b2c321e2c9c27c9c1e5a5798d44d4d7e766483287",
+      "command": "./scripts/validate-source.sh",
+      "execution": {
+        "architecture": "arm64",
+        "machine": "aarch64",
+        "root": true,
+        "nft_available": true,
+        "started_utc": "2026-10-16T21:04:31.842337+00:00",
+        "finished_utc": "2026-10-16T21:08:29.923897+00:00"
+      },
+      "tests": {
+        "suites": 21,
+        "ran": 272,
+        "passed": 272,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "source_gate_exit_code": 0,
+      "strict_snapshot_wrapper_exit_code": 2,
+      "source_integrity": {
+        "declared_inputs": 299,
+        "input_hashes_modes_and_symlink_targets_unchanged": true,
+        "missing_inputs": 0,
+        "unexpected_files": 1,
+        "unexpected_file_kind": "python-bytecode",
+        "strict_source_unchanged": false
+      },
+      "result": "source-tests-passed-strict-postcheck-failed"
+    },
+    {
+      "label": "console-bytecode-gate-20261016T211050Z-9317e7",
+      "scope": "targeted-console-rerun-on-corrected-working-tree-snapshot",
+      "base_commit": "b340a9fafaeccbace96df81395d29e11ffe85c05",
+      "snapshot_archive_sha256": "8be641bb503dad973f4fc403ad9326e547752d6ec3a874565ac00d4ab0f11897",
+      "snapshot_manifest_sha256": "a12fce995c8f41fa7e86c9dcbc7e43f2ccb4c3a4e9790b7f0fd187c20289ea9b",
+      "changed_inputs_since_full_gate": [
+        "tests/test-console-header.py"
+      ],
+      "correction": "The isolated console fixture interpreter uses -B to prevent bytecode output.",
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 tests/test-console-header.py",
+      "execution": {
+        "architecture": "arm64",
+        "machine": "aarch64",
+        "root": true,
+        "started_utc": "2026-10-16T21:11:12.976647+00:00",
+        "finished_utc": "2026-10-16T21:11:30.239828+00:00"
+      },
+      "tests": {
+        "ran": 11,
+        "passed": 11,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "exit_code": 0,
+      "source_integrity": {
+        "declared_inputs": 299,
+        "strict_source_unchanged": true
+      },
+      "result": "targeted-tests-and-strict-postcheck-passed"
+    },
+    {
+      "label": "amd64-native-docker-console",
+      "scope": "targeted-native-console-tests-observed-during-development",
+      "command": "python3 tests/test-console-header.py",
+      "tests": {
+        "ran": 11,
+        "passed": 11,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "result": "passed"
+    },
+    {
+      "label": "host-bash-readline",
+      "scope": "targeted-shell-integration-tests-observed-during-development",
+      "command": "python3 tests/test-command-suggestions-bash.py",
+      "tests": {
+        "ran": 26,
+        "passed": 26,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "result": "passed"
+    }
+  ],
+  "counting_policy": "Evidence counts overlap and are not summed. The amd64 final-pin aggregate gate is separately observed; the pre-pin ARM64 snapshot and targeted reruns do not establish an ARM64 final-pin aggregate gate.",
+  "remaining_acceptance": [
+    "completed-binary-and-source-iso-builds",
+    "artifact-checksum-and-source-closure-verification",
+    "matching-edition-architecture-pair-gate",
+    "fresh-install-external-ssh-and-host-key-uniqueness",
+    "new-image-boot-terminal-wifi-and-command-assistance",
+    "selected-desktop-image-acceptance",
+    "applicable-physical-wifi-and-smart-card-operation",
+    "actual-apple-host-display-resize-and-graphics-acceptance"
+  ],
+  "privacy": "Sanitized labels, digests and counts only; private runtime logs, credentials and machine identifiers are not included."
+}

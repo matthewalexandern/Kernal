@@ -114,13 +114,23 @@ See [console and appearance](CONSOLE.md), [Wi-Fi](WIFI.md),
 
 | Evidence | Current status |
 | --- | --- |
-| Targeted source/native tests | Implemented and exercised during development; final aggregate run/receipt pending |
-| Authenticated dependency resolution for the selected image set | Final recorded result pending |
-| New 0.2.0 amd64/ARM64 binary/source ISO builds | Pending; no new ISO production claimed in this document |
+| Source/native tests | Actual amd64 final-pin source gate passed 272/272 tests across 21 suites with zero skips; checkout stayed clean with no unexpected generated source files. Native nftables and shell/branding/recovery checks passed; subsequent native Calamares stage passed 13 schemas. Earlier ARM64 pre-pin gate also passed 272 tests but failed its strict postcheck solely for one bytecode file, with all 299 declared inputs unchanged; corrected console rerun passed 11/11 with strict verification. Native Docker console passed 11/11, host Bash/Readline passed 26/26, and final-pin ARM64 Plymouth passed 3/3. These overlapping counts are not summed. |
+| Immutable image source | Commit `b99b4b7ec90a11ef09ad3958e01ccc67363b55cd`, tree `25ffcb6c9ae1314e335e83fd084374134d97a049`; source-bundle SHA-256 `a989c07b180ff995e875bf2a575f530a45b8e0e4fd77e24cb809dafa30fde928` |
+| Authenticated dependency resolution for the selected image set | Final build-time recorded result pending |
+| New 0.2.0 amd64/ARM64 binary/source ISO builds | amd64 build is underway after its full source gate and 13 Calamares schemas passed; native installer CMake work is in progress. ARM64 is queued after amd64 export, with its clean candidate clone's 299 input bytes/symlink targets verified and canonical Git modes confirmed. No new ISO production is claimed. |
 | Fresh-install SSH and other VM acceptance | Pending on the affected images |
 | Physical Wi-Fi/card reader/card operation | Pending on applicable hardware |
 | Apple-host boot/display/resize/acceleration | Pending on the actual supported host/hypervisor combination |
 | Exact new artifacts and checksums | Pending successful production and read-back verification |
+
+The [sanitized source-validation progress record](builds/2026-10-16-b99b4b7/README.md)
+and its [machine-readable receipt](builds/2026-10-16-b99b4b7/source-validation.json)
+preserve the distinction between the 272-test command success, its failed
+strict postcheck, and the successful targeted rerun. The separately observed
+complete amd64 final-pin source gate is recorded in the
+[amd64 receipt](builds/2026-10-16-b99b4b7/amd64-source-gate.json); ARM64's full
+build-time source gate remains pending. The hashed source bundle is a transfer
+artifact, not a binary or source ISO.
 
 The final receipt must replace these pending entries with observed results or
 specific blockers and list only artifacts that actually exist. Record a
