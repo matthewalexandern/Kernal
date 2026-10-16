@@ -72,11 +72,14 @@ sudo kythos-enroll-tpm2 /dev/nvme0n1p3 \
 The command requires a LUKS2 volume, a working TPM2, enabled UEFI Secure Boot,
 the EFI System Partition mounted at `/boot/efi`, and an event log whose replay
 matches the live TPM and shows the required SHA-256 GRUB measurements. The
-recovery destination must be a separately mounted,
-read-write block filesystem reported by the kernel as removable, USB, or
-FireWire storage. An SD card qualifies through its removable-device flag;
-internal eMMC does not qualify merely because its transport is MMC. It must not
-share a backing device with the LUKS volume. This
+recovery destination must be a separately mounted, read-write block filesystem
+on a direct disk or partition backed by exactly one physical disk. That disk
+must be reported by the kernel as removable, USB, or FireWire storage. An SD
+card qualifies through its removable-device flag; internal eMMC does not
+qualify merely because its transport is MMC. Device-mapper, LVM, MD RAID, and
+other composite or multi-device recovery filesystems are refused, even when
+one or all members are external. The recovery disk must not share a backing
+device with the LUKS volume. This
 prevents a missing USB mount from silently placing the key on the system disk.
 The helper flushes both recovery files and the block device before success;
 unmount the filesystem cleanly before removing it.

@@ -54,8 +54,10 @@ kernel command line, kernel, initramfs, and MOK state. A changed measurement
 blocks automatic key release. Enrollment requires the parsed event log to
 replay to every selected live PCR, checks GRUB kernel and initramfs events, and
 compares the boot files to the snapshot created before the required reboot.
-Recovery material is written only to detected removable storage on a different
-backing device and is flushed before the helper reports success. The classic
+Recovery material is written only to a direct disk or partition backed by one
+detected removable or external physical disk on a different backing device;
+composite storage is rejected. The material is flushed before the helper
+reports success. The classic
 shim and GRUB path does not
 authenticate the separate initramfs before it can ask for a fallback secret,
 so an unexpected passphrase prompt is treated as a physical-tampering event;

@@ -22,6 +22,7 @@ for script in \
     "$repo_root/scripts/audit-source-coverage.sh" \
     "$repo_root/scripts/build.sh" \
     "$repo_root/scripts/validate-source.sh" \
+    "$repo_root/tests/test-recovery-topology.sh" \
     "$repo_root/config/hooks/live/005-add-grub2-source.hook.source" \
     "$repo_root/config/hooks/live/010-enable-security.hook.chroot" \
     "$repo_root/config/hooks/live/015-prepare-compliance.hook.chroot" \
@@ -62,6 +63,7 @@ check_contains "$config" "--ignore-system-defaults"
 check_contains "$config" 'https://snapshot.debian.org/archive/debian/'
 check_contains "$config" 'https://snapshot.debian.org/archive/debian-security/'
 check_contains "$config" 'audit=1 audit_backlog_limit=8192'
+check_contains "$repo_root/scripts/build.sh" 'find auto config scripts tests -type f -print0'
 
 source_hook="$repo_root/config/hooks/live/005-add-grub2-source.hook.source"
 check_contains "$source_hook" \
@@ -226,6 +228,9 @@ check_cy_rejects -o apt::get::allowunauthenticated=true
 check_cy_rejects -oAcquire::AllowInsecureRepositories=true
 check_cy_rejects --option=acquire::allowdowngradetoinsecurerepositories=true
 check_cy_rejects -c /tmp/untrusted-apt.conf
+check_cy_rejects -qc/tmp/untrusted-apt.conf
+check_cy_rejects -yqc/tmp/untrusted-apt.conf
+check_cy_rejects -qoAcquire::AllowInsecureRepositories=true
 check_cy_rejects --config-file=/tmp/untrusted-apt.conf
 check_cy_rejects --Allow-Unauthenticated
 check_cy_rejects --Force-Yes
@@ -243,6 +248,12 @@ check_cy_rejects untrusted.deb
 check_cy_rejects -- ./untrusted.deb
 check_cy_rejects file:/tmp/untrusted.deb
 check_cy_rejects https://example.invalid/untrusted.deb
+if ! cy_output=$("$cy" -qq --version 2>&1); then
+    fail 'cy rejected a safe short-option cluster'
+else
+    printf '%s\n' "$cy_output" | grep -Eq '^apt [0-9]' \
+        || fail 'cy did not execute the packaged apt command'
+fi
 if cy_output=$(APT_CONFIG=/tmp/untrusted-apt.conf "$cy" --version 2>&1); then
     fail 'cy accepted the APT_CONFIG environment variable'
 else
@@ -274,7 +285,11 @@ check_contains "$tpm_enrollment" 'findmnt --kernel=listmount'
 check_contains "$tpm_enrollment" 'expected_recovery_mount_unique_id'
 check_contains "$tpm_enrollment" 'recovery_fd_directory=/proc/$$/fd/8'
 check_contains "$tpm_enrollment" 'recovery_fd_block=/proc/$$/fd/9'
-check_contains "$tpm_enrollment" 'lsblk -srno RM,TRAN'
+check_contains "$tpm_enrollment" 'findmnt --evaluate -rn -o SOURCES'
+check_contains "$tpm_enrollment" 'lsblk -dnro TYPE'
+check_contains "$tpm_enrollment" 'lsblk -nP -o TYPE'
+check_contains "$tpm_enrollment" 'lsblk -snP -o TYPE,RM,TRAN'
+check_contains "$tpm_enrollment" 'kythos-recovery-topology.awk'
 check_contains "$tpm_enrollment" 'shares a backing device with the LUKS volume'
 check_contains "$tpm_enrollment" 'blockdev --flushbufs'
 check_contains "$tpm_enrollment" 'clevis luks edit -f'
@@ -301,6 +316,10 @@ check_contains "$tpm_enrollment" \
     'an unexpected boot passphrase prompt can indicate tampering'
 check_contains "$tpm_enrollment" \
     'do not run cryptsetup, systemd-cryptenroll, or Clevis mutations'
+test -s "$repo_root/config/includes.chroot/usr/local/libexec/kythos-recovery-topology.awk" \
+    || fail 'recovery-storage topology policy is missing or empty'
+"$repo_root/tests/test-recovery-topology.sh" \
+    || fail 'recovery-storage topology policy tests failed'
 check_contains "$repo_root/docs/ENCRYPTION-SSH-CY.md" \
     'classic signed shim and GRUB path does not'
 

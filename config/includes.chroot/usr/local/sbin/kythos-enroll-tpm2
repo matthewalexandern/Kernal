@@ -5,6 +5,7 @@ umask 077
 state_directory=/var/lib/kythos
 prepare_marker=$state_directory/tpm2-enrollment-prepared
 pcr_policy='{"hash":"sha256","key":"ecc","pcr_bank":"sha256","pcr_ids":"4,7,8,9,14"}'
+recovery_topology_policy=/usr/local/libexec/kythos-recovery-topology.awk
 
 usage()
 {
@@ -145,11 +146,31 @@ check_recovery_media()
         || die 'cannot resolve the recovery block device'
     test -b "$recovery_block_device" \
         || die 'recovery mount source is not a block device'
+    recovery_filesystem_sources=$(findmnt --evaluate -rn -o SOURCES \
+        --target "$recovery_directory") \
+        || die 'cannot enumerate the recovery filesystem sources'
+    test "$recovery_filesystem_sources" = "$recovery_block_device" \
+        || die 'recovery storage must have exactly one direct block source'
 
-    if ! lsblk -srno RM,TRAN "$recovery_block_device" \
-        | awk '$1 == "1" || $2 ~ /^(usb|firewire|ieee1394)$/ { found=1 }
-               END { exit(found ? 0 : 1) }'; then
-        die 'recovery storage is not reported as removable or externally transported'
+    test -r "$recovery_topology_policy" \
+        || die 'the recovery-storage topology policy is unavailable'
+    recovery_source_type=$(lsblk -dnro TYPE -- "$recovery_block_device") \
+        || die 'cannot identify the recovery-storage source type'
+    recovery_forward_topology=$(lsblk -nP -o TYPE \
+        -- "$recovery_block_device") \
+        || die 'cannot inspect recovery-storage holders'
+    raw_recovery_topology=$(lsblk -snP -o TYPE,RM,TRAN \
+        -- "$recovery_block_device") \
+        || die 'cannot inspect the recovery-storage topology'
+    test -n "$recovery_forward_topology" \
+        || die 'the recovery-storage holder topology is empty'
+    test -n "$raw_recovery_topology" \
+        || die 'the recovery-storage topology is empty'
+    if ! printf '%s\n' "$raw_recovery_topology" \
+        | awk -v "source_type=$recovery_source_type" \
+            -v "forward_topology=$recovery_forward_topology" \
+            -f "$recovery_topology_policy"; then
+        die 'recovery storage must be one direct external or removable disk or partition'
     fi
 
     raw_luks_device_chain=$(lsblk -srno MAJ:MIN "$device") \

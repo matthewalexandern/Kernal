@@ -33,10 +33,12 @@ for argument do
             blocked_option "$argument"
             ;;
         -c|--config-file|-c?*|--config-file=*|\
-        -o|--option|-o?*|--option=*)
+        -o|--option|-o?*|--option=*|-[!-]*[co]*)
             # A custom APT configuration can re-enable unauthenticated
-            # packages indirectly. Keep all configuration injection on the
-            # underlying apt command, outside the guarded operator command.
+            # packages indirectly. APT also accepts c and o inside clustered
+            # short options, so reject those letters anywhere in a cluster.
+            # Keep all configuration injection on the underlying apt command,
+            # outside the guarded operator command.
             blocked_option "$argument"
             ;;
         /*|./*|../*|~/*|file:*|copy:*|*://*|*.deb|*.ddeb|*.udeb)

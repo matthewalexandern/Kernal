@@ -169,7 +169,7 @@ install -o root -g root -m 0755 \
 (
     cd "$repo_root"
     {
-        find auto config scripts -type f -print0
+        find auto config scripts tests -type f -print0
         printf 'LICENSE\0SNAPSHOT\0VERSION\0'
     } | LC_ALL=C sort -z | xargs -0 sha256sum
 ) > "$artifact_root/recipe-SHA256SUMS"
