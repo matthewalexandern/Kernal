@@ -14,6 +14,8 @@ HOOK = ROOT / "config/hooks/live/060-record-installer-packages.hook.chroot"
 SOURCE_HOOK = ROOT / "config/hooks/live/005-add-grub2-source.hook.source"
 FINISH_HOOK = (ROOT / "config/includes.installer/usr/lib/finish-install.d/"
                "93kythos-live-cleanup")
+CLEAN_HELPER = (ROOT / "config/includes.chroot/usr/local/libexec/"
+                "kythos-calamares-clean-live-files")
 CODE = HOOK.read_text().split("python3 - <<'PY'\n", 1)[1].split("\nPY\n", 1)[0]
 SOURCE_REPORT_CODE = SOURCE_HOOK.read_text().split(
     "python3 - missing-source.txt <<'PY_REPORT'\n", 1
@@ -92,6 +94,34 @@ class RemovalPlanTests(unittest.TestCase):
 
 
 class FinishInstallHookTests(unittest.TestCase):
+    def test_advanced_installer_purges_manifest_before_removing_it(self):
+        calls = []
+        helpers = {
+            "verify_chroot_context": lambda: calls.append("verify"),
+            "purge_live_packages": lambda: calls.append("purge"),
+            "remove_live_files": lambda: calls.append("remove"),
+        }
+
+        def record_unlink(path, missing_ok=False):
+            calls.append("unlink:" + str(path))
+
+        namespace = {"__name__": "__test__"}
+        with patch("runpy.run_path", return_value=helpers) as loader, \
+                patch.object(Path, "unlink", autospec=True, side_effect=record_unlink), \
+                patch.object(sys, "argv", [str(CLEAN_HELPER)]):
+            exec(compile(CLEAN_HELPER.read_text(), str(CLEAN_HELPER), "exec"), namespace)
+            self.assertEqual(namespace["main"](), 0)
+
+        loader.assert_called_once_with("/usr/local/libexec/kythos-calamares-target")
+        self.assertEqual(calls[:3], ["verify", "purge", "remove"])
+        self.assertEqual(
+            calls[3:],
+            [
+                "unlink:/usr/local/libexec/kythos-calamares-target",
+                "unlink:/usr/local/libexec/kythos-calamares-grub-install",
+            ],
+        )
+
     def test_advanced_installer_forces_terminal_default(self):
         with tempfile.TemporaryDirectory(prefix="kythos-finish-hook-test-") as folder:
             folder = Path(folder)

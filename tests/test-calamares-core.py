@@ -148,6 +148,30 @@ class SignedBootTests(unittest.TestCase):
 
 
 class TargetTests(unittest.TestCase):
+    def test_live_purge_finds_native_manifest_name_with_qualified_dpkg_status(self):
+        calls = []
+
+        def command(arguments, capture=False):
+            calls.append(arguments)
+            if arguments[:2] == ["/usr/bin/dpkg-query", "-W"]:
+                return "qml6-module-qtqml-workerscript:amd64\tinstalled\n"
+            if arguments[:3] == ["/usr/bin/apt-get", "-s", "-y"]:
+                return "Purg qml6-module-qtqml-workerscript:amd64 [6.8.2]\n"
+            if arguments[:3] == ["/usr/bin/apt-get", "-y", "--no-install-recommends"]:
+                return None
+            raise AssertionError("Unexpected package command: " + repr(arguments))
+
+        with patch.object(target, "manifest_packages",
+                          return_value=["qml6-module-qtqml-workerscript"]), \
+                patch.object(target, "command", side_effect=command):
+            target.purge_live_packages()
+
+        self.assertEqual(
+            calls[-1],
+            ["/usr/bin/apt-get", "-y", "--no-install-recommends", "purge", "--",
+             "qml6-module-qtqml-workerscript"],
+        )
+
     def test_actual_calamares_boolean_roundtrip_reaches_strict_receipt_reader(self):
         # The real 3.3.14 QVariant bridge stores Python bools as integer 0/1.
         # Exercise the producer, API representation, file writer and consumer.

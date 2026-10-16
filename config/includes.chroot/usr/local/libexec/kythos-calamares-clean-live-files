@@ -1,12 +1,14 @@
 #!/usr/bin/python3
 # SPDX-License-Identifier: MIT
-"""File-only cleanup for the advanced installer's already configured target.
+"""Remove the live environment from an advanced installer's configured target.
 
-This does not change packages, users, disks, encryption or boot configuration.
-The advanced installer owns all those steps itself.
+The advanced installer owns users, disks, encryption and boot configuration.
+This helper removes only the build-time package closure and files recorded for
+the live environment, using the same guarded target helpers as Calamares.
 """
 from pathlib import Path
 import runpy
+import subprocess
 import sys
 
 
@@ -16,11 +18,12 @@ def main():
             raise ValueError("This helper takes no arguments.")
         helpers = runpy.run_path("/usr/local/libexec/kythos-calamares-target")
         helpers["verify_chroot_context"]()
+        helpers["purge_live_packages"]()
         helpers["remove_live_files"]()
         Path("/usr/local/libexec/kythos-calamares-target").unlink(missing_ok=True)
         Path("/usr/local/libexec/kythos-calamares-grub-install").unlink(missing_ok=True)
-    except (OSError, ValueError) as error:
-        print("KythOS Kernal live-file cleanup failed: " + str(error), file=sys.stderr)
+    except (OSError, ValueError, subprocess.CalledProcessError) as error:
+        print("KythOS Kernal live-environment cleanup failed: " + str(error), file=sys.stderr)
         return 1
     return 0
 
