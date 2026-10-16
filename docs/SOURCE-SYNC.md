@@ -6,6 +6,11 @@ that origin. Each machine needs its own working Git authentication and access
 to the repository; copying a checkout or a Git bundle does not transfer login
 credentials.
 
+The unpublished commits were rewritten with the user's authorization to use
+GitHub noreply email addresses. The shared origin uses that new history. See
+the [identity map](git-identity-map-2026-10-16.json). If a checkout came from the
+original `94cf361` handoff bundle, follow the migration below before syncing.
+
 ## Before working on main
 
 From the repository directory on either machine, run:
@@ -73,33 +78,39 @@ into `main` after review, then update the other checkout. The main-only sync
 helper does not manage task branches or resolve conflicts. Do not run a
 background file mirror between the two working trees.
 
-## Restore the transferred repository on the Mac
+## Migrate the original handoff checkout
 
-The complete Desktop handoff contains a bundle with source history and the
-build-record commit `94cf361`. After verifying the handoff folder's
-`SHA256SUMS`, restore it into a new destination:
+The original `Kernal-records-94cf361.bundle` contains the previous email
+history. Its `main` cannot fast-forward to the rewritten shared `main`.
+Preserve that bundle, its frozen handoff folder and any existing checkout for
+image provenance and local edits. Do not merge or push the old history or its
+backup refs into the shared repository.
 
-```sh
-git clone ~/Desktop/KythOS-Kernal-cc472f5/source/Kernal-records-94cf361.bundle ~/Kernal
-git -C ~/Kernal remote set-url origin https://github.com/matthewalexandern/Kernal.git
-git -C ~/Kernal log -1 --oneline
-git -C ~/Kernal status --short --branch
-```
-
-That bundle ends at `94cf361`; later workflow changes, including the sync
-helper, arrive through a subsequent published commit or a newer verified
-bundle. Once those commits have been pushed and Mac Git authentication works,
-update the restored checkout:
+After the rewritten history is published and Mac Git authentication works,
+clone it into a new directory, leaving the old checkout intact:
 
 ```sh
-git -C ~/Kernal pull --ff-only origin main
-cd ~/Kernal
+git clone https://github.com/matthewalexandern/Kernal.git ~/Kernal-synced
+cd ~/Kernal-synced
+git config --local user.email 321331429+matthewalexandern@users.noreply.github.com
+git config --get user.email
 ./scripts/sync-source.sh
 ```
 
-Until the publishing machine successfully pushes, its newer commits are not
-available from GitHub. A conversation appearing on both computers does not
-synchronize files or give either session shell access to the other machine.
+The email above uses the verified GitHub account ID `321331429` and login
+`matthewalexandern`. Set and verify that repository-local email on Ubuntu as
+well before committing. Preserve the existing author name. Ensure author or
+committer environment overrides do not substitute the previous email.
+
+If the old checkout has local work, compare the relevant files and bring only
+reviewed file changes into the fresh checkout. Inspect the new diff and commit
+those changes with the noreply identity. Do not merge, cherry-pick or push the
+old commits, or include the old bundles and backup refs in a new export. A new
+handoff bundle must contain only the rewritten shared branch.
+
+A successful clone or pull requires published commits and working local Git
+authentication. A shared conversation does not synchronize files or provide
+shell access to the other computer.
 
 ## Source changes and architecture builds
 
@@ -112,7 +123,10 @@ gate after both builds finish.
 
 The [completed cc472f5 build records](builds/2026-10-16-cc472f5/README.md)
 describe images built from `cc472f571c2784a105ee12e5df408275ef14fa37`.
-The later evidence commit `94cf361` does not change that image source identity.
+Those original IDs remain the truth for the existing images and records.
+The [identity map](git-identity-map-2026-10-16.json) identifies the equivalent
+noreply source commit `56a1b71c023beef9c6a2db4b57cb2c5d5ccd1516`, whose source
+tree is identical. Rewriting Git metadata does not relabel or update an ISO.
 Both architecture builds, source coverage and transfer checks passed. AMD64
 has fresh installed-system VM acceptance; ARM64 boot, installation, Secure
 Boot, Parallels and physical hardware remain untested.

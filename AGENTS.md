@@ -4,6 +4,23 @@ The Ubuntu and Mac workspaces use separate clones of the private
 `matthewalexandern/Kernal` repository. GitHub is the shared source history.
 See [the source synchronization workflow](docs/SOURCE-SYNC.md).
 
+## Noreply history migration
+
+- The user authorized rewriting the 22 unpublished commits to use GitHub
+  noreply email addresses. The shared origin uses the rewritten history;
+  [the identity map](docs/git-identity-map-2026-10-16.json) preserves the mapping
+  and equivalent source trees.
+- Original `94cf361` bundle checkouts cannot fast-forward to the rewritten
+  `main`. Preserve old checkouts, local edits, private backup refs and frozen
+  exports. On the Mac, clone GitHub into a new `~/Kernal-synced` directory and
+  bring only reviewed file changes into new commits. Never merge, cherry-pick
+  or push the original private-email history or backup refs into shared
+  branches. New bundles must include only the rewritten shared branch.
+- Before committing on either machine, set and verify the repository-local
+  `user.email` as `321331429+matthewalexandern@users.noreply.github.com`, using
+  the verified GitHub account ID and login. Preserve author names and ensure
+  author/committer environment overrides do not restore a previous email.
+
 ## Before changing source
 
 - Inspect the current branch and working tree. On a clean `main` checkout,
@@ -39,6 +56,9 @@ See [the source synchronization workflow](docs/SOURCE-SYNC.md).
 - Existing `cc472f5` images retain that exact source identity. Their verified
   records are in `docs/builds/2026-10-16-cc472f5/`; later workflow or records
   commits do not change the bytes or identity of those images.
+- The equivalent noreply source commit is recorded in the identity map. Its
+  matching tree does not replace the original commit ID embedded in existing
+  images, manifests or frozen exports.
 - Keep ISOs, VM disks, caches, private keys, passwords and private runtime logs
   out of Git. Transfer artifacts separately with checksum read-back. Preserve
   frozen transfer folders and the retained user VM/account.

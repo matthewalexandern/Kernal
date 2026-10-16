@@ -1,0 +1,137 @@
+{
+  "schema": 1,
+  "reason": "At the owner's explicit request, replace private author/committer emails in the 22 unpublished commits with the owner's GitHub noreply address. Existing shared history is unchanged.",
+  "shared_base_unchanged": "f263c7ad2ae2bfa44565aef79958262fa34963cd",
+  "original_unpublished_head": "fbb1e69ba49c3d3b4efb07ddd3a892be14ae9cde",
+  "noreply_equivalent_head": "5dedf40f4ed490ee19156023bbdc3386cd6baadb",
+  "rewritten_commits": 22,
+  "preserved": [
+    "Git trees and file bytes",
+    "Commit message bytes",
+    "Author and committer names",
+    "Author and committer dates and time zones"
+  ],
+  "changed": [
+    "Author and committer email headers",
+    "Parent commit IDs within the rewritten range"
+  ],
+  "image_provenance": {
+    "image_source_commit": "cc472f571c2784a105ee12e5df408275ef14fa37",
+    "noreply_equivalent_source_commit": "56a1b71c023beef9c6a2db4b57cb2c5d5ccd1516",
+    "identical_source_tree": "37f88c56b3f569b64840df58cd24277eec09cfde",
+    "scope": "The existing binary/source ISOs were built from the original image_source_commit. Their bytes and build records remain unchanged. The equivalent noreply commit has the identical source tree; this does not change the identity of the already built images or claim a rebuild from the new commit."
+  },
+  "mac_migration": "Old transferred Git bundles retain original history and will diverge from the noreply main branch. Preserve that checkout for local work and exact original image-source proof; clone the GitHub main branch into a separate directory for shared development. Do not merge or push the archived original email history.",
+  "identities": [
+    {
+      "original_commit": "590ae56bd72e76354f672e24e779b754d5962db4",
+      "noreply_commit": "3f69eb15fbf7652eee1978eabb145e9876fe5232",
+      "tree": "20fd5410cfddf39448c0523d52015be9a82ac599"
+    },
+    {
+      "original_commit": "98da1bbcc46eaae2a252007a45f11b86fe06231a",
+      "noreply_commit": "4cb8b2612f7d79e52226938aa0305efe304740e8",
+      "tree": "4a359d824c8430b707cd773f0d8521b5dbc8952f"
+    },
+    {
+      "original_commit": "2777b8c373625393c5c9764fb160dd4306424aa1",
+      "noreply_commit": "f6ab55ac1e1339982bc27f5ded28f7e38acc775d",
+      "tree": "e34a5ed1efe1c0c069a92bb86e1ac2bb00bebb48"
+    },
+    {
+      "original_commit": "de420fa3620d25cf2b49cd42e9e1eb27d2cad3df",
+      "noreply_commit": "4612b441224d25921bb7755e2363f472f7a7ad53",
+      "tree": "518191b87044cd53e34550fe68d264a75be2925b"
+    },
+    {
+      "original_commit": "ff941798bfc1cd27d4f34d0763c8410f1bb35f16",
+      "noreply_commit": "2b7f568e8501b0bac4defd1c507047981b533a74",
+      "tree": "11c55b559d2f8caab04fb086b0c4259831f8edfb"
+    },
+    {
+      "original_commit": "a84e03140b913e4730cd0570fc53ee35ed368c2f",
+      "noreply_commit": "91f260f5c3e6f508a333117c6a71252867b6260b",
+      "tree": "6ca867155cb4435417125d26d844cb0ca259c023"
+    },
+    {
+      "original_commit": "d995e255110d658007f5144c933a729d9017bd5f",
+      "noreply_commit": "a041d721a21abf5204df3e9c41fb69d4d62475f8",
+      "tree": "c5e20eaa210fa89f96da420a0729c3ed07c8219f"
+    },
+    {
+      "original_commit": "92fd9689b6284bda866e3318810410fa05fcd395",
+      "noreply_commit": "eeae83eb91699bcb5e94e24befec020ce6225fe1",
+      "tree": "c107252b077bdff317256ce102d35bbdcc6aa17b"
+    },
+    {
+      "original_commit": "60dda14405ca4aee43bf2b2b67d352359e9c95c9",
+      "noreply_commit": "235c3edba95c7a97d7ccf7b0de9842131b0ee470",
+      "tree": "c193362bf577b8d11eadac9a496e2fa96a8196f4"
+    },
+    {
+      "original_commit": "3305abffad3279248e1781ef629845221bde9fef",
+      "noreply_commit": "a387481770db6a34af90450d727e50d6f7d96544",
+      "tree": "aeeb23dd72e92488e3a30a5207d0cee60e085e82"
+    },
+    {
+      "original_commit": "c97c5a07eabc33e184906f28eb5105342f75bc09",
+      "noreply_commit": "1994923b6cc4365bc2672923dfc3066ddb8e315c",
+      "tree": "c816522f95b0e259853d170969b09e5dc7f85953"
+    },
+    {
+      "original_commit": "832f00dab0091a1a2e8d56ca3f3e0732f83471c6",
+      "noreply_commit": "5a11be53df14ac18d6441b8f774c180f352e3863",
+      "tree": "089408aeee9bfdd78a767d6bc06ec13c237d569d"
+    },
+    {
+      "original_commit": "08ad917548c12a324411e69bdc6f656cec2a65cb",
+      "noreply_commit": "652c329a1e36d1d02d916b3d6fcf3d846f6b2695",
+      "tree": "d71324577c510cd5d9eb70670f49cca485a45c53"
+    },
+    {
+      "original_commit": "18ac989efa97d687852b2ead306dc3f316215a1a",
+      "noreply_commit": "b1c43be458c2dd7cc8d0ba520fc1b201915ea773",
+      "tree": "50f0c0d2b5f39b0bfd8d7cd048fe870beafed14f"
+    },
+    {
+      "original_commit": "727e5910dfb6163afc4185f89b0d8a53622e806c",
+      "noreply_commit": "9f4c9997c302aa5d4b8a5072c1f0680104544349",
+      "tree": "7c43f50f51318bec11fa4a63c78025c6f6e68090"
+    },
+    {
+      "original_commit": "77fa41d63379200dc6cc0b0eea93544d184ed69c",
+      "noreply_commit": "123016dc27b9c3a0243dc62a340857bc074f76f5",
+      "tree": "654156481293235d6b8666e55e7a6a929e31b103"
+    },
+    {
+      "original_commit": "0dab8498789afc2c5a21bd028ac60b15466f362c",
+      "noreply_commit": "e19e1163b3c26ca65e784f4a6cfdba7615d8e549",
+      "tree": "7ba62b3db28faa7737ce03ebc1460ad185f7aaad"
+    },
+    {
+      "original_commit": "65c1cdb60a139c407d761c99b46ece91ac7298ca",
+      "noreply_commit": "8c5ea29e1626e2ffe4ce4261c73e44974311db5f",
+      "tree": "cf949b281c8f75b174e0fc6713c5a0d35b312220"
+    },
+    {
+      "original_commit": "720491ce863ba8c15ec014a77cd2dc7bd1518f25",
+      "noreply_commit": "11b09d9af4302307081b17758c4c614e078f57ca",
+      "tree": "a3cccccd97bd35f3439fede1c8caa063ac498a06"
+    },
+    {
+      "original_commit": "cc472f571c2784a105ee12e5df408275ef14fa37",
+      "noreply_commit": "56a1b71c023beef9c6a2db4b57cb2c5d5ccd1516",
+      "tree": "37f88c56b3f569b64840df58cd24277eec09cfde"
+    },
+    {
+      "original_commit": "94cf3612190adc26b351c78715baa061e9a63ebc",
+      "noreply_commit": "e3464a3743f6b4ba3edb4cf60e5334fa32fe316f",
+      "tree": "ab44b253e4e08207ebc9176e3a567e0a6f53b891"
+    },
+    {
+      "original_commit": "fbb1e69ba49c3d3b4efb07ddd3a892be14ae9cde",
+      "noreply_commit": "5dedf40f4ed490ee19156023bbdc3386cd6baadb",
+      "tree": "8c03afd4a2a869cf44510d68a08c5bf349aca3ac"
+    }
+  ]
+}
