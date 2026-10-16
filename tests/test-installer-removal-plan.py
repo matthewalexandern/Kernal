@@ -11,9 +11,13 @@ from unittest.mock import patch
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 HOOK = ROOT / "config/hooks/live/060-record-installer-packages.hook.chroot"
+SOURCE_HOOK = ROOT / "config/hooks/live/005-add-grub2-source.hook.source"
 FINISH_HOOK = (ROOT / "config/includes.installer/usr/lib/finish-install.d/"
                "93kythos-live-cleanup")
 CODE = HOOK.read_text().split("python3 - <<'PY'\n", 1)[1].split("\nPY\n", 1)[0]
+SOURCE_REPORT_CODE = SOURCE_HOOK.read_text().split(
+    "python3 - missing-source.txt <<'PY_REPORT'\n", 1
+)[1].split("\nPY_REPORT\n", 1)[0]
 BASE = "linux-image-amd64\npython3\nsudo\nsystemd-sysv\n"
 LIVE = "calamares\nqml6-module-qtquick\n"
 STATUS = "\n".join([
@@ -89,7 +93,6 @@ class RemovalPlanTests(unittest.TestCase):
 
 class FinishInstallHookTests(unittest.TestCase):
     def test_advanced_installer_forces_terminal_default(self):
-        self.assertFalse(Path("/target/usr/local/libexec/kythos-calamares-clean-live-files").exists())
         with tempfile.TemporaryDirectory(prefix="kythos-finish-hook-test-") as folder:
             folder = Path(folder)
             log = folder / "in-target.log"
@@ -107,14 +110,61 @@ class FinishInstallHookTests(unittest.TestCase):
                 "PATH": f"{folder}:/usr/bin:/bin",
                 "KYTHOS_TEST_LOG": str(log),
             }
-            subprocess.run(["/bin/sh", str(FINISH_HOOK)], check=True, env=environment)
+            runner = (
+                "test() {\n"
+                "    if [ \"$1\" = -x ] && [ \"$2\" = "
+                "'/target/usr/local/libexec/kythos-calamares-clean-live-files' ]; then\n"
+                "        return 0\n"
+                "    fi\n"
+                "    command test \"$@\"\n"
+                "}\n"
+                ". \"$1\"\n"
+            )
+            subprocess.run(["/bin/sh", "-eu", "-c", runner, "hook-test", str(FINISH_HOOK)],
+                           check=True, env=environment)
             self.assertEqual(
                 log.read_text().splitlines(),
                 [
+                    "/usr/local/libexec/kythos-calamares-clean-live-files",
                     "/usr/bin/systemctl set-default multi-user.target",
                     "/usr/bin/systemctl get-default",
                 ],
             )
+
+
+class SourceReportTests(unittest.TestCase):
+    HEADER = (
+        'This file contains the list of binary packages that are installed on the "live"\n'
+        'system (to which this source disc is a companion) for which a corresponding\n'
+        'source package is not included on this disc. This may be because the binary\n'
+        'package does not have a corresponding source package, or because the version of\n'
+        'the source package available was not the same as that of the binary.\n\n'
+    )
+    PLACEHOLDER = 'un  grub-efi       <none>       <none>       (no description available)\n'
+
+    def parse(self, contents):
+        with tempfile.TemporaryDirectory(prefix="kythos-source-report-test-") as folder:
+            report = Path(folder) / "missing-source.txt"
+            report.write_text(contents)
+            return subprocess.run(
+                [sys.executable, "-", str(report)], input=SOURCE_REPORT_CODE,
+                text=True, capture_output=True,
+            )
+
+    def test_accepts_only_header_or_exact_uninstalled_grub_efi_placeholder(self):
+        self.assertEqual(self.parse(self.HEADER).stdout.strip(), "header-only")
+        accepted = self.parse(self.HEADER + self.PLACEHOLDER)
+        self.assertEqual(accepted.returncode, 0)
+        self.assertEqual(accepted.stdout.strip(), "uninstalled-grub-efi")
+
+    def test_rejects_real_or_unknown_missing_rows(self):
+        for row in (
+            "ii  real-package   1.0   amd64   Real package\n",
+            "un  grub-efi <none> <none> (no description available)\n",
+            self.PLACEHOLDER + "un  unknown <none> <none> (no description available)\n",
+        ):
+            with self.subTest(row=row):
+                self.assertNotEqual(self.parse(self.HEADER + row).returncode, 0)
 
 
 if __name__ == "__main__":

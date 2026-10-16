@@ -190,25 +190,71 @@ cp ../NOTICE NOTICE
 version=$(cat ../VERSION)
 printf 'KythOS Kernal %s amd64 source\n' "$version" > .disk/info
 
-# Accept live-build's report only when it contains its five-line explanation
-# and the expected blank sixth line, with no missing-package entries after it.
-# This separately covers bootloader and image-tool sources that are outside
-# the live-root and ISO package-pool inventory above.
+# Parse live-build's report exactly. Its source_debian stage can append the
+# configured EFI selector `grub-efi` even when that metapackage is explicitly
+# not installed and has no binary version. That placeholder is accepted only
+# after the independent exact-tuple audit above has covered grub2.
 if test -f missing-source.txt; then
-    expected_header=$(cat <<'EOF'
-This file contains the list of binary packages that are installed on the "live"
-system (to which this source disc is a companion) for which a corresponding
-source package is not included on this disc. This may be because the binary
-package does not have a corresponding source package, or because the version of
-the source package available was not the same as that of the binary.
-EOF
+    report_kind=$(python3 - missing-source.txt <<'PY_REPORT'
+from pathlib import Path
+import sys
+
+header = [
+    'This file contains the list of binary packages that are installed on the "live"',
+    'system (to which this source disc is a companion) for which a corresponding',
+    'source package is not included on this disc. This may be because the binary',
+    'package does not have a corresponding source package, or because the version of',
+    'the source package available was not the same as that of the binary.',
+    '',
+]
+placeholder = 'un  grub-efi       <none>       <none>       (no description available)'
+lines = Path(sys.argv[1]).read_text(encoding='utf-8').splitlines()
+if lines == header:
+    print('header-only')
+elif lines == header + [placeholder]:
+    print('uninstalled-grub-efi')
+else:
+    raise SystemExit('Unexpected live-build missing-source report content')
+PY_REPORT
     )
-    report_lines=$(wc -l < missing-source.txt)
-    actual_header=$(sed -n '1,5p' missing-source.txt)
-    sixth_line=$(sed -n '6p' missing-source.txt)
-    test "$report_lines" -eq 6
-    test "$actual_header" = "$expected_header"
-    test -z "$sixth_line"
+    case "$report_kind" in
+        header-only)
+            cat > source-selection-notes.txt <<'EOF'
+live_build_missing_source_report=header-only
+selection_exception=none
+exact_source_coverage=required-source-tuples.tsv
+EOF
+            ;;
+        uninstalled-grub-efi)
+            grub_efi_status=$(chroot ../chroot dpkg-query -W \
+                -f='${db:Status-Status}' grub-efi 2>/dev/null || true)
+            grub_efi_version=$(chroot ../chroot dpkg-query -W \
+                -f='${Version}' grub-efi 2>/dev/null || true)
+            test "$grub_efi_status" = not-installed
+            test -z "$grub_efi_version"
+            grub2_required=$(awk -F '\t' '$1 == "grub2"' "$required_tuples")
+            test -n "$grub2_required"
+            printf '%s\n' "$grub2_required" | LC_ALL=C sort -u > "$missing_tuples"
+            grub2_uncovered=$(comm -23 "$missing_tuples" "$provided_tuples")
+            test -z "$grub2_uncovered"
+            {
+                printf '%s\n' \
+                    'live_build_missing_source_report=accepted-uninstalled-placeholder' \
+                    'binary_selector=grub-efi' \
+                    'target_dpkg_status=not-installed' \
+                    'target_binary_version=none' \
+                    'exact_source_coverage=required-source-tuples.tsv' \
+                    'covered_source_tuples:'
+                printf '%s\n' "$grub2_required" | sed 's/^/  /'
+            } > source-selection-notes.txt
+            ;;
+        *)
+            printf 'Unexpected missing-source report classification: %s\n' \
+                "$report_kind" >&2
+            exit 1
+            ;;
+    esac
+    chmod 0644 source-selection-notes.txt
     rm -f missing-source.txt
 fi
 

@@ -49,12 +49,12 @@ finished binary and source ISOs to verify the manifests. Any missing tuple or
 binary mismatch fails the build. The coverage report and manifests are release
 artifacts.
 
-For example, live-build can report the EFI metapackage `grub-efi` even though
-its actual source package is `grub2`. The KythOS audit reads the authoritative
-`Source` and `Version` fields from each binary, including binNMU handling,
-instead of guessing from binary names. It clears live-build's report only when
-the file is exactly its six-line header-only form; any reported package row
-fails the source hook.
+For example, live-build can report its configured EFI selector `grub-efi` even
+when that metapackage is not installed and has no version. The KythOS audit
+accepts only that exact uninstalled placeholder after confirming the target
+dpkg state and exact `grub2` source tuple coverage. Any real or unknown missing
+row fails the source hook. The decision and covered tuple are retained in the
+source ISO as `source-selection-notes.txt`.
 
 `KYTHOS_BUILD_ROOT` and `KYTHOS_ARTIFACT_ROOT` can select different locations,
 but each destination's existing parent chain must be root-owned, contain no

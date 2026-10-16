@@ -149,8 +149,11 @@ check_contains "$source_hook" 'binary-source-manifest.tsv'
 check_contains "$source_hook" 'required-source-tuples.tsv'
 check_contains "$source_hook" 'cp ../LICENSE LICENSE'
 check_contains "$source_hook" 'cp ../NOTICE NOTICE'
-check_contains "$source_hook" 'expected_header=$(cat'
-check_contains "$source_hook" 'test "$report_lines" -eq 6'
+check_contains "$source_hook" "placeholder = 'un  grub-efi       <none>       <none>       (no description available)'"
+check_contains "$source_hook" 'test "$grub_efi_status" = not-installed'
+check_contains "$source_hook" 'test -z "$grub_efi_version"'
+check_contains "$source_hook" 'grub2_uncovered=$(comm -23'
+check_contains "$source_hook" 'source-selection-notes.txt'
 check_contains "$source_hook" 'snapshot_metadata_directory=../snapshot-InRelease'
 check_contains "$source_hook" 'snapshot.debian.org_archive_debian-security_'
 
