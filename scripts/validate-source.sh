@@ -216,6 +216,7 @@ check_contains "$branding_hook" 'install -o root -g root -m 0644 "$os_release_te
 check_contains "$branding_hook" 'IMAGE_ID=kythos-live'
 check_contains "$branding_hook" 'Parent: Debian'
 check_contains "$branding_hook" 'dpkg-divert --local --add --no-rename'
+check_contains "$branding_hook" '--divert /etc/os-release.debootstrap /etc/os-release'
 check_contains "$branding_hook" 'for identity_file in /usr/lib/os-release /etc/os-release'
 check_contains "$repo_root/NOTICE" \
     'Debian is a registered trademark owned by Software in the Public Interest, Inc.'

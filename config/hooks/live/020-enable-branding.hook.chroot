@@ -13,6 +13,12 @@ build_id=$(date -u -d "@$SOURCE_DATE_EPOCH" +%Y%m%dT%H%M%SZ)
 
 # Keep the derivative identity when base-files is upgraded. Package-owned
 # originals continue to be delivered to the .distrib paths by dpkg.
+# live-build temporarily diverts /etc/os-release during bootstrap. Retire
+# only that known local diversion; its later cleanup checks this exact suffix.
+if test "$(dpkg-divert --truename /etc/os-release)" = /etc/os-release.debootstrap; then
+    dpkg-divert --local --remove --no-rename \
+        --divert /etc/os-release.debootstrap /etc/os-release
+fi
 for identity_file in /usr/lib/os-release /etc/os-release; do
     dpkg-divert --local --add --no-rename \
         --divert "$identity_file.distrib" "$identity_file"
