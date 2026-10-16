@@ -27,6 +27,10 @@ The guided layout suggests 2 GiB for boot, with a 1 GiB guided minimum. It
 imposes no maximum; manual partitioning chooses its own sizes. These defaults
 do not restrict the size of the root filesystem.
 
+The partition legend also uses its widget's text and background palette,
+including hover states. This keeps disk labels and sizes readable in the
+installer's dark theme without changing partition operations.
+
 ## Build in the disposable Debian 13 guest
 
 Use authenticated configured Debian package sources. Fetch the exact source

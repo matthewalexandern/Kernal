@@ -1,4 +1,4 @@
-Description: Validate proposed boot and encrypted swap layout before any disk jobs
+Description: Validate proposed boot and encrypted swap layout and honor the UI palette
 Author: KythOS contributors
 Forwarded: not-needed
 Last-Update: 2026-10-16
@@ -9,6 +9,8 @@ encrypted root. Selected swap must be encrypted when root is encrypted. Show a
 visible native-page explanation, disable Next only for these invalid plans,
 and defensively replace the partition queue with a failure job before writes.
 No passphrases are copied or logged by this patch.
+Partition legends use their widget's text and background palette so labels
+and sizes remain readable in the KythOS dark theme.
 
 --- /dev/null
 +++ b/src/modules/partition/KythosStoragePolicy.h
@@ -329,3 +331,41 @@ No passphrases are copied or logged by this patch.
  
  private:
      QString currentPartitions() const;
+--- a/src/modules/partition/gui/PartitionLabelsView.cpp
++++ b/src/modules/partition/gui/PartitionLabelsView.cpp
+@@ -269,7 +269,7 @@
+             labelRect.adjust( 0, -LAYOUT_MARGIN, 0, -2 * LAYOUT_MARGIN );
+             painter->translate( 0.5, 0.5 );
+             QRect hoverRect = labelRect.adjusted( 0, 0, -1, -1 );
+-            painter->setBrush( QPalette().window().color().lighter( 102 ) );
++            painter->setBrush( palette().base().color().lighter( 120 ) );
+             painter->setPen( Qt::NoPen );
+             painter->drawRoundedRect( hoverRect, CORNER_RADIUS, CORNER_RADIUS );
+ 
+@@ -360,7 +360,7 @@
+                                 const QPoint& pos,
+                                 bool selected )
+ {
+-    painter->setPen( Qt::black );
++    painter->setPen( palette().color( QPalette::Text ) );
+     int vertOffset = 0;
+     int width = 0;
+     for ( const QString& textLine : text )
+@@ -369,7 +369,7 @@
+         painter->drawText(
+             pos.x() + LABEL_PARTITION_SQUARE_MARGIN, pos.y() + vertOffset + textSize.height() / 2, textLine );
+         vertOffset += textSize.height();
+-        painter->setPen( Qt::gray );
++        painter->setPen( palette().color( QPalette::Text ) );
+         width = qMax( width, textSize.width() );
+     }
+ 
+@@ -382,7 +382,7 @@
+         drawSelectionSquare( painter, partitionSquareRect.adjusted( 2, 2, -2, -2 ), color );
+     }
+ 
+-    painter->setPen( Qt::black );
++    painter->setPen( palette().color( QPalette::Text ) );
+ }
+ 
+ QModelIndex

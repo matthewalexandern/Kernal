@@ -141,7 +141,7 @@ QAbstractItemView::item { padding: 4px 5px; }
 QAbstractItemView::item:hover { background-color: #173248; }
 QAbstractItemView::item:selected { background-color: #00cfe4; color: #001820; }
 QAbstractItemView::indicator {
-    width: 17px; height: 17px;
+    width: 13px; height: 13px;
     background-color: #07111e; border: 1px solid #57748c; border-radius: 3px;
 }
 QAbstractItemView::indicator:checked {
@@ -189,10 +189,13 @@ QDialog, QMessageBox { background-color: #0c1522; }
 QDialogButtonBox { background-color: transparent; }
 QFrame[frameShape="4"], QFrame[frameShape="5"] { color: #263a50; }
 
-/* The upstream partition label painter draws black/gray text directly.
- * A pale diagram canvas preserves contrast for this custom painter.
- * Disk rows and all editing controls stay dark.
+/* The patched native label painter uses this widget's Text and Base palette.
+ * ChoicePage keeps the constructor's partitionLabel object name;
+ * PartitionPage.ui replaces it with partitionLabelsView. Match the class
+ * and both names, including their viewport children.
  */
-QAbstractItemView#partitionLabel, QAbstractItemView#partitionLabel QWidget {
-    background-color: #e0e8ef; color: #101e2e; border: none; border-radius: 3px;
+PartitionLabelsView, PartitionLabelsView QWidget,
+QAbstractItemView#partitionLabel, QAbstractItemView#partitionLabel QWidget,
+QAbstractItemView#partitionLabelsView, QAbstractItemView#partitionLabelsView QWidget {
+    background-color: #07111e; color: #e5eef5; border: none; border-radius: 3px;
 }
