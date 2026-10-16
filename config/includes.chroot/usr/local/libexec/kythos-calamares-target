@@ -51,7 +51,7 @@ REQUIRED_PACKAGES = frozenset((
     "clevis-tpm2", "python3", "grub2-common", "grub-pc-bin",
     "grub-efi-amd64-bin", "grub-efi-amd64-signed", "shim-signed", "efibootmgr",
     "unattended-upgrades", "openssl-provider-fips", "debian-security-support",
-    "needrestart", "debsums", "cron", "s-nail",
+    "needrestart", "debsums", "cron", "s-nail", "tmux",
 ))
 PACKAGE_RE = re.compile(r"[a-z0-9][a-z0-9+.-]*(?::[a-z0-9][a-z0-9-]*)?\Z")
 APT_LIST_RE = re.compile(r"^[ \t]*deb(?:-src)?[ \t]+(?:\[[^\]\r\n]*\][ \t]+)?([^\s#]+)")

@@ -1,0 +1,177 @@
+#!/usr/bin/python3 -I
+"""Keep a local console header outside an authenticated user's shell viewport."""
+
+import os
+from pathlib import Path
+import re
+import shutil
+import signal
+import stat
+import subprocess
+import sys
+import tempfile
+import termios
+
+
+TMUX = '/usr/bin/tmux'
+CONFIG = '/usr/share/kythos/console-tmux.conf'
+SHELL = ('/bin/bash', '-l')
+RAW_REQUESTED = 'raw-console-requested'
+# Linux OSC P sets just this virtual console's bright-blue entry (hex c).
+# PIO_CMAP is deliberately not used: it changes global defaults and other VTs.
+PERIWINKLE_ESCAPE = b'\x1b]Pc9eafff'
+LOCAL_TTY = re.compile(r'/dev/tty[1-9][0-9]*\Z')
+
+
+def live_boot(cmdline=None, medium=None):
+    if medium is None:
+        medium = Path('/run/live/medium').is_dir()
+    if medium:
+        return True
+    if cmdline is None:
+        try:
+            cmdline = Path('/proc/cmdline').read_text()
+        except OSError:
+            # Leave the login shell alone when the boot context is unknown.
+            return True
+    return 'boot=live' in cmdline.split()
+
+
+def eligible(environment=None):
+    environment = os.environ if environment is None else environment
+    if (environment.get('KYTHOS_CONSOLE_HEADER') == '0' or
+            environment.get('TERM') != 'linux' or environment.get('TMUX') or
+            any(environment.get(name) for name in ('SSH_CONNECTION', 'SSH_CLIENT', 'SSH_TTY')) or
+            live_boot()):
+        return False
+    if not os.isatty(0) or not os.isatty(1):
+        return False
+    try:
+        tty = os.ttyname(0)
+        return bool(LOCAL_TTY.fullmatch(tty)) and tty == os.ttyname(1)
+    except OSError:
+        return False
+
+
+def apply_console_color(environment):
+    """Set the local VT's brand color; leave it until that VT is reset."""
+    if environment.get('KYTHOS_CONSOLE_COLOR') == '0':
+        return
+    try:
+        os.write(1, PERIWINKLE_ESCAPE)
+    except OSError:
+        pass
+
+
+class SessionInterrupted(Exception):
+    def __init__(self, number):
+        self.number = number
+
+
+def runtime_parent():
+    candidate = Path('/run/user') / str(os.getuid())
+    try:
+        info = candidate.lstat()
+        if stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid() and info.st_mode & 0o077 == 0:
+            return str(candidate)
+    except OSError:
+        pass
+    return '/tmp'
+
+
+def stop_server(tmux, socket, environment):
+    try:
+        if stat.S_ISSOCK(os.lstat(socket).st_mode):
+            subprocess.run([tmux, '-S', socket, 'kill-server'], env=environment,
+                           stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, timeout=2, check=False)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def raw_requested(tmux, socket, environment):
+    try:
+        result = subprocess.run([tmux, '-S', socket, 'show-options', '-gv', '@kythos_raw'],
+                                env=environment, stdin=subprocess.DEVNULL,
+                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                timeout=2, check=False)
+        return result.returncode == 0 and result.stdout.strip() == b'1'
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def run_session(*, tmux=TMUX, config=CONFIG, shell=SHELL, environment=None):
+    """Run one private server. Parameters support isolated native PTY tests."""
+    environment = dict(os.environ if environment is None else environment)
+    directory = tempfile.mkdtemp(prefix='kythos-console-', dir=runtime_parent())
+    socket = os.path.join(directory, 'socket')
+    attributes = None
+    process = None
+    old_handlers = {}
+
+    def interrupted(number, _frame):
+        raise SessionInterrupted(number)
+
+    try:
+        attributes = termios.tcgetattr(0)
+        apply_console_color(environment)
+        for number in (signal.SIGHUP, signal.SIGTERM, signal.SIGINT):
+            old_handlers[number] = signal.signal(number, interrupted)
+        process = subprocess.Popen([tmux, '-S', socket, '-f', config,
+                                    'new-session', '-s', 'kythos', '-n', 'console', *shell],
+                                   env=environment, close_fds=True)
+        result = process.wait()
+        if raw_requested(tmux, socket, environment):
+            return RAW_REQUESTED
+        if result != 0:
+            raise OSError('private console client failed')
+        return 0
+    finally:
+        # Cleanup may not be interrupted halfway through terminal restoration.
+        for number in old_handlers:
+            signal.signal(number, signal.SIG_IGN)
+        stop_server(tmux, socket, environment)
+        if process is not None and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=2)
+        if attributes is not None:
+            try:
+                termios.tcsetattr(0, termios.TCSANOW, attributes)
+            except OSError:
+                pass
+        shutil.rmtree(directory, ignore_errors=True)
+        for number, handler in old_handlers.items():
+            signal.signal(number, handler)
+
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    if argv == ['--check']:
+        return 0 if eligible() else 1
+    if argv:
+        print('Usage: kythos-console-session [--check]', file=sys.stderr)
+        return 2
+    if not eligible():
+        return 1
+    try:
+        result = run_session()
+        if result == RAW_REQUESTED:
+            environment = dict(os.environ, KYTHOS_CONSOLE_HEADER='0')
+            os.execve('/bin/bash', list(SHELL), environment)
+            return 0
+        return result
+    except SessionInterrupted as exc:
+        return 128 + exc.number
+    except (OSError, subprocess.SubprocessError):
+        # This is after restoring terminal state and deleting our server/socket.
+        print('KythOS console header unavailable; continuing with Bash.', file=sys.stderr)
+        environment = dict(os.environ, KYTHOS_CONSOLE_HEADER='0')
+        os.execve('/bin/bash', list(SHELL), environment)
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

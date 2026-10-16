@@ -207,6 +207,8 @@ required_source_recipe_files=(
     NOTICE
     docs/BRANDING.md
     docs/NETWORKING.md
+    docs/COMMAND-SUGGESTIONS.md
+    docs/CONSOLE.md
     config/includes.installer/etc/lsb-release
     config/includes.installer/usr/lib/debian-installer-startup.d/S19kythos-branding
     config/includes.installer/usr/lib/kythos/debconf-loadtemplate
@@ -215,6 +217,15 @@ required_source_recipe_files=(
     config/includes.chroot/etc/profile.d/50-kythos-path.sh
     config/includes.chroot/etc/NetworkManager/system-connections/90-kythos-automatic-ethernet.nmconnection
     config/hooks/live/025-network-defaults.hook.chroot
+    config/hooks/live/026-shell-suggestions.hook.chroot
+    config/hooks/live/027-console-header.hook.chroot
+    config/includes.chroot/etc/profile.d/55-kythos-console.sh
+    config/includes.chroot/usr/local/libexec/kythos-console-session
+    config/includes.chroot/usr/local/bin/kythos-console
+    config/includes.chroot/usr/share/kythos/console-tmux.conf
+    config/includes.chroot/etc/profile.d/60-kythos-suggestions.sh
+    config/includes.chroot/usr/local/libexec/kythos-command-suggest
+    config/includes.chroot/usr/share/kythos/command-intents.json
     tests/test-installer-branding.sh
     tests/test-login-branding.sh
     tests/test-calamares-core.py
@@ -224,6 +235,9 @@ required_source_recipe_files=(
     tests/test-hardware-status.py
     tests/test-cy-help.py
     tests/test-network-defaults.py
+    tests/test-command-suggest.py
+    tests/test-command-suggestions-bash.py
+    tests/test-console-header.py
     tests/calamares-storage-policy.cpp
 )
 for required_source_recipe_file in "${required_source_recipe_files[@]}"

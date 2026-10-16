@@ -34,6 +34,8 @@ for script in \
     "$repo_root/config/hooks/live/020-enable-branding.hook.binary" \
     "$repo_root/config/hooks/live/020-enable-branding.hook.chroot" \
     "$repo_root/config/hooks/live/025-network-defaults.hook.chroot" \
+    "$repo_root/config/hooks/live/026-shell-suggestions.hook.chroot" \
+    "$repo_root/config/hooks/live/027-console-header.hook.chroot" \
     "$repo_root/config/hooks/live/030-configure-authentication.hook.chroot" \
     "$repo_root/config/hooks/live/060-record-installer-packages.hook.chroot" \
     "$repo_root/config/hooks/live/030-record-installer-packages.hook.binary" \
@@ -76,6 +78,12 @@ PY
     test -x "$script" || fail "script is not executable: $script"
 done
 
+# This fragment is sourced only by interactive Bash, so validate it with Bash.
+bash -n "$repo_root/config/includes.chroot/etc/profile.d/60-kythos-suggestions.sh" \
+    || fail 'command suggestion Bash integration syntax failed'
+bash -n "$repo_root/config/includes.chroot/etc/profile.d/55-kythos-console.sh" \
+    || fail 'console Bash integration syntax failed'
+
 # Compile without generating host-version bytecode in the image recipe.
 python3 - "$repo_root" <<'PY' || fail 'Calamares or setup-guide syntax/configuration failed'
 from pathlib import Path
@@ -83,8 +91,10 @@ import sys
 import yaml
 root = Path(sys.argv[1])
 programs = [root / 'config/includes.chroot/usr/local/bin' / name
-            for name in ('kythos-setup', 'kythos-hardware-status')]
+            for name in ('kythos-setup', 'kythos-hardware-status', 'kythos-console')]
 programs.append(root / 'config/includes.chroot/usr/local/sbin/kythos-fido-login')
+programs.append(root / 'config/includes.chroot/usr/local/libexec/kythos-command-suggest')
+programs.append(root / 'config/includes.chroot/usr/local/libexec/kythos-console-session')
 programs += sorted((root / 'config/includes.chroot/usr/local/libexec').glob('kythos-calamares-*'))
 programs += sorted((root / 'config/includes.chroot/etc/calamares/modules').glob('kythos-*/*.py'))
 for program in programs:
@@ -93,7 +103,7 @@ for config in (root / 'config/includes.chroot/etc/calamares').rglob('*'):
     if config.suffix in ('.conf', '.desc') and not isinstance(yaml.safe_load(config.read_text()), dict):
         raise ValueError('Expected installer configuration map: ' + str(config))
 PY
-for installer_test in test-installer-removal-plan.py test-calamares-core.py test-setup-wizard.py test-fido2-login.py test-hardware-status.py test-cy-help.py test-network-defaults.py; do
+for installer_test in test-installer-removal-plan.py test-calamares-core.py test-setup-wizard.py test-fido2-login.py test-hardware-status.py test-cy-help.py test-network-defaults.py test-command-suggest.py test-command-suggestions-bash.py test-console-header.py; do
     PYTHONDONTWRITEBYTECODE=1 python3 "$repo_root/tests/$installer_test" \
         || fail "installer test failed: $installer_test"
 done
@@ -329,7 +339,7 @@ check_contains "$authentication_hook" 'pam_unix.so minlen=1'
 check_contains "$authentication_hook" 'pam_(cracklib|passwdqc|pwhistory|pwquality)'
 
 cy="$repo_root/config/includes.chroot/usr/local/bin/cy"
-check_contains "$cy" 'exec /usr/bin/apt "$@"'
+check_contains "$cy" 'exec /usr/bin/apt -o APT::Cmd::Show-Update-Stats=false -o APT::Get::HideAutoRemove=true "$@"'
 check_cy_rejects()
 {
     if cy_output=$("$cy" "$@" --version 2>&1); then

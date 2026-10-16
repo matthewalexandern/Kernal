@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "intents": [
+    {
+      "id": "password-change", "kind": "suggestion", "privileged": true,
+      "arguments": {"user": "username"}, "command": ["passwd", "{user}"],
+      "message": "Change the password for {user}; the password is entered privately by passwd.",
+      "patterns": [["change", "{user}", "password"], ["change", "password", "{user}"], ["change", "the", "password", "for", "{user}"], ["reset", "{user}", "password"], ["reset", "password", "for", "{user}"]]
+    },
+    {
+      "id": "password-missing-user", "kind": "incomplete", "command": [],
+      "message": "Whose password? Specify the exact username, for example: change password matthew.",
+      "patterns": [["change", "password"], ["change", "a", "password"], ["change", "user", "password"], ["reset", "password"]]
+    },
+    {
+      "id": "user-create", "kind": "suggestion", "privileged": true,
+      "arguments": {"user": "username"}, "command": ["adduser", "{user}"],
+      "message": "Create {user} with the interactive account setup wizard.",
+      "patterns": [["create", "user", "{user}"], ["create", "a", "user", "{user}"], ["add", "user", "{user}"], ["create", "account", "{user}"]]
+    },
+    {
+      "id": "user-missing-name", "kind": "incomplete", "command": [],
+      "message": "Which username should be created? Specify the exact account name.",
+      "patterns": [["create", "user"], ["create", "a", "user"], ["add", "user"], ["create", "account"]]
+    },
+    {
+      "id": "user-admin", "kind": "suggestion", "privileged": true,
+      "arguments": {"user": "username"}, "command": ["usermod", "-aG", "sudo", "{user}"],
+      "message": "Grant {user} sudo administration by appending the sudo group; existing groups stay intact.",
+      "patterns": [["make", "{user}", "an", "admin"], ["make", "{user}", "admin"], ["make", "{user}", "an", "administrator"], ["add", "{user}", "to", "administrators"], ["add", "{user}", "to", "the", "sudo", "group"], ["give", "{user}", "sudo", "access"]]
+    },
+    {
+      "id": "root-access-ambiguous", "kind": "ambiguous", "command": [],
+      "arguments": {"user": "username"},
+      "message": "Root users could mean sudo administration, the root group, or UID 0. Specify the intended access; no account change is proposed.",
+      "patterns": [["add", "{user}", "to", "root", "users"], ["add", "{user}", "to", "the", "root", "group"], ["make", "{user}", "root"], ["give", "{user}", "root", "access"]]
+    },
+    {
+      "id": "ssh-key-copy", "kind": "suggestion", "command": ["ssh-copy-id"],
+      "message": "Copy your SSH public key. Add the exact user@host destination before running.",
+      "patterns": [["ssh", "copy", "id"], ["ssh", "copy", "di"], ["copy", "ssh", "key"], ["sshcopyid"], ["ssh_copy_id"]]
+    },
+    {
+      "id": "ssh-key-copy-target", "kind": "suggestion",
+      "arguments": {"host": "host"}, "command": ["ssh-copy-id", "{host}"],
+      "message": "Copy your SSH public key to {host}; the destination is preserved exactly.",
+      "patterns": [["ssh", "copy", "id", "{host}"], ["ssh", "copy", "di", "{host}"], ["copy", "ssh", "key", "to", "{host}"], ["sshcopyid", "{host}"], ["ssh_copy_id", "{host}"]]
+    },
+    {
+      "id": "ssh-connect", "kind": "suggestion", "arguments": {"host": "host"},
+      "command": ["ssh", "{host}"], "message": "Open an SSH connection to the exact destination {host}.",
+      "patterns": [["connect", "to", "{host}", "using", "ssh"], ["ssh", "to", "{host}"]]
+    },
+    {
+      "id": "package-refresh", "kind": "suggestion", "privileged": true,
+      "command": ["cy", "update"], "message": "Refresh signed repository package lists; this does not upgrade installed packages.",
+      "patterns": [["refresh", "package", "lists"], ["refresh", "the", "package", "lists"], ["check", "for", "updates"], ["update", "package", "lists"]]
+    },
+    {
+      "id": "package-update-ambiguous", "kind": "ambiguous", "command": [],
+      "message": "Refresh package lists, or upgrade installed packages? Use refresh package lists or upgrade packages.",
+      "patterns": [["update", "packages"], ["update", "the", "packages"], ["update", "system"], ["update", "the", "system"]]
+    },
+    {
+      "id": "package-upgrade", "kind": "suggestion", "privileged": true,
+      "command": ["cy", "upgrade"], "message": "Upgrade installed packages from authenticated repositories; review the package manager's proposed changes.",
+      "patterns": [["upgrade", "packages"], ["upgrade", "installed", "packages"], ["upgrade", "the", "system"]]
+    },
+    {
+      "id": "package-install", "kind": "suggestion", "privileged": true,
+      "arguments": {"packages": "package"}, "command": ["cy", "install", "{packages...}"],
+      "message": "Install the exact repository package names through cy; package authentication remains enforced.",
+      "patterns": [["install", "package", "{packages...}"], ["install", "packages", "{packages...}"]]
+    },
+    {
+      "id": "package-search", "kind": "suggestion", "arguments": {"query": "query"},
+      "command": ["cy", "search", "{query...}"], "message": "Search package metadata for the exact supplied search terms.",
+      "patterns": [["search", "packages", "for", "{query...}"], ["find", "packages", "for", "{query...}"]]
+    },
+    {
+      "id": "hardware-status", "kind": "suggestion", "command": ["kythos-hardware-status"],
+      "message": "Read detected hardware and driver readiness; no drivers are installed or changed.",
+      "patterns": [["check", "hardware"], ["show", "hardware"], ["show", "hardware", "status"], ["check", "drivers"]]
+    },
+    {
+      "id": "nvidia-status", "kind": "suggestion", "command": ["kythos-nvidia-readiness"],
+      "message": "Read NVIDIA driver readiness; no driver or repository changes are made.",
+      "patterns": [["check", "nvidia"], ["show", "nvidia", "status"]]
+    },
+    {
+      "id": "security-status", "kind": "suggestion", "privileged": true,
+      "command": ["kythos-security-status"], "message": "Read the system security status with administrator access.",
+      "patterns": [["check", "security"], ["show", "security", "status"]]
+    },
+    {
+      "id": "network-addresses", "kind": "suggestion", "command": ["ip", "-brief", "address"],
+      "message": "Show local network interfaces and assigned addresses.",
+      "patterns": [["show", "network", "interfaces"], ["show", "ip", "addresses"], ["list", "network", "addresses"]]
+    },
+    {
+      "id": "network-routes", "kind": "suggestion", "command": ["ip", "route"],
+      "message": "Show the current routing table.",
+      "patterns": [["show", "routes"], ["show", "network", "routes"]]
+    },
+    {
+      "id": "network-status", "kind": "suggestion", "command": ["nmcli", "general", "status"],
+      "message": "Read NetworkManager connectivity status.",
+      "patterns": [["check", "network"], ["show", "network", "status"]]
+    },
+    {
+      "id": "network-listeners", "kind": "suggestion", "privileged": true,
+      "command": ["ss", "-lntup"], "message": "Show listening TCP/UDP sockets and their processes.",
+      "patterns": [["show", "listening", "ports"], ["list", "listening", "ports"]]
+    }
+  ],
+  "command_actions": [
+    {"command": "cy", "actions": {"update": true, "upgrade": true, "full-upgrade": true, "install": true, "reinstall": true, "remove": true, "purge": true, "autoremove": true, "search": false, "show": false, "list": false}}
+  ]
+}

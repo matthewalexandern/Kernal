@@ -1,0 +1,23 @@
+#!/bin/sh
+# Load the original KythOS helper in interactive non-login Bash shells too.
+set -eu
+
+profile=/etc/profile.d/60-kythos-suggestions.sh
+engine=/usr/local/libexec/kythos-command-suggest
+catalogue=/usr/share/kythos/command-intents.json
+test -f "$profile"
+test -x "$engine"
+test -f "$catalogue"
+/bin/bash -n "$profile"
+
+if ! grep -Fxq '# BEGIN KythOS command suggestions' /etc/bash.bashrc; then
+    cat >> /etc/bash.bashrc <<'BASH'
+
+# BEGIN KythOS command suggestions
+if [ -r /etc/profile.d/60-kythos-suggestions.sh ]; then
+    . /etc/profile.d/60-kythos-suggestions.sh
+fi
+# END KythOS command suggestions
+BASH
+fi
+/bin/bash -n /etc/bash.bashrc

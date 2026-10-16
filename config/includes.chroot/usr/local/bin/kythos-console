@@ -1,0 +1,104 @@
+#!/usr/bin/python3 -I
+"""Explicitly leave or enter the private local-console header viewport."""
+
+import os
+from pathlib import Path
+import re
+import stat
+import subprocess
+import sys
+
+
+TMUX = '/usr/bin/tmux'
+WRAPPER = '/usr/local/libexec/kythos-console-session'
+DIRECTORY_NAME = re.compile(r'kythos-console-[A-Za-z0-9_-]{6,32}\Z')
+PANE_NAME = re.compile(r'%[0-9]+\Z')
+
+
+def private_socket(environment):
+    value = environment.get('TMUX', '')
+    fields = value.rsplit(',', 2)
+    if len(fields) != 3 or not all(part.isdecimal() for part in fields[1:]):
+        raise ValueError('This is not a managed KythOS console viewport.')
+    socket = Path(fields[0])
+    parent = socket.parent
+    base = parent.parent
+    uid = os.geteuid()
+    if (not socket.is_absolute() or str(socket) != fields[0] or socket.name != 'socket' or
+            not DIRECTORY_NAME.fullmatch(parent.name) or
+            not (base == Path('/tmp') or base.parent == Path('/run/user') and base.name.isdecimal())):
+        raise ValueError('This is not a managed KythOS console viewport.')
+    directory = parent.lstat()
+    if directory.st_uid != uid:
+        raise ValueError('Run raw as the original console login user; leave the sudo shell first.')
+    if not stat.S_ISDIR(directory.st_mode) or stat.S_IMODE(directory.st_mode) != 0o700:
+        raise ValueError('The console socket directory is not private.')
+    if parent.parent != Path('/tmp'):
+        if parent.parent != Path('/run/user') / str(uid):
+            raise ValueError('The console runtime directory does not match the login user.')
+        runtime = parent.parent.lstat()
+        if (not stat.S_ISDIR(runtime.st_mode) or runtime.st_uid != uid or
+                stat.S_IMODE(runtime.st_mode) != 0o700):
+            raise ValueError('The console runtime directory is not private.')
+    info = socket.lstat()
+    if not stat.S_ISSOCK(info.st_mode) or info.st_uid != uid or info.st_mode & 0o077:
+        raise ValueError('The console socket is not private.')
+    pane = environment.get('TMUX_PANE', '')
+    if not PANE_NAME.fullmatch(pane):
+        raise ValueError('The current console pane could not be identified.')
+    return str(socket), pane
+
+
+def tmux_call(socket, arguments, environment):
+    return subprocess.run([TMUX, '-S', socket, *arguments], env=environment,
+                          stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                          stderr=subprocess.PIPE, timeout=3, check=False)
+
+
+def raw(environment):
+    socket, pane = private_socket(environment)
+    result = tmux_call(socket, ['display-message', '-p', '-t', pane,
+                               '#{@kythos_console_managed}\t#{server_sessions}\t#{session_name}\t#{session_windows}\t#{window_panes}\t#{session_attached}\t#{client_tty}'],
+                       environment)
+    fields = result.stdout.decode('utf-8', errors='strict').strip().split('\t')
+    if (result.returncode or len(fields) != 7 or fields[:6] != ['1', '1', 'kythos', '1', '1', '1'] or
+            not re.fullmatch(r'/dev/(?:tty[1-9][0-9]*|pts/[0-9]+)', fields[6])):
+        raise ValueError('This is not the managed single-pane KythOS console session.')
+    client = fields[6]
+    result = tmux_call(socket, ['set-option', '-g', '@kythos_raw', '1'], environment)
+    if result.returncode:
+        raise ValueError('The console could not request raw mode.')
+    result = tmux_call(socket, ['detach-client', '-t', client], environment)
+    if result.returncode:
+        tmux_call(socket, ['set-option', '-g', '@kythos_raw', '0'], environment)
+        raise ValueError('The console could not detach its managed viewport.')
+    return 0
+
+
+def header(environment):
+    environment = dict(environment)
+    environment.pop('KYTHOS_CONSOLE_HEADER', None)
+    result = subprocess.run([WRAPPER, '--check'], env=environment,
+                            stdin=None, stdout=None, stderr=subprocess.DEVNULL,
+                            timeout=3, check=False)
+    if result.returncode:
+        raise ValueError('Header mode requires a raw local Linux console, outside SSH, tmux, and the live installer.')
+    os.execve(WRAPPER, [WRAPPER], environment)
+    return 0
+
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    if argv not in (['raw'], ['header']):
+        print('Usage: kythos-console raw | header', file=sys.stderr)
+        return 2
+    try:
+        return raw(dict(os.environ)) if argv == ['raw'] else header(dict(os.environ))
+    except (ValueError, OSError, subprocess.SubprocessError) as exc:
+        message = str(exc) if isinstance(exc, ValueError) and not isinstance(exc, UnicodeError) else 'Console mode change is unavailable.'
+        print('kythos-console: ' + message, file=sys.stderr)
+        return 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

@@ -12,3 +12,5 @@ iproute2
 iputils-ping
 pciutils
 usbutils
+# A private terminal viewport keeps the local console header outside apps.
+tmux

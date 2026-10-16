@@ -41,6 +41,10 @@ package so installed systems receive KythOS policy updates.
   represented as formally validated.
 - NVIDIA headers, DKMS, MOK, firmware, and detection tooling without forcing a
   single driver family onto incompatible GPUs.
+- Original local command suggestions for interactive Bash: request a preview
+  with Tab, accept it with Tab or Right Arrow, and execute with Enter.
+- A fixed local-console header and matching hostname color, with the command
+  area sized separately so terminal applications retain their controls.
 - No installed desktop, hypervisor, AI runtime, proprietary NVIDIA driver, or
   custom kernel in the common base. The installation interface is removed
   from installed targets.
@@ -138,6 +142,8 @@ packages require the recipient to accept separate license terms.
 - [Encryption, SSH, and `cy`](docs/ENCRYPTION-SSH-CY.md)
 - [NVIDIA driver path](docs/NVIDIA.md)
 - [Network defaults](docs/NETWORKING.md)
+- [Command suggestions](docs/COMMAND-SUGGESTIONS.md)
+- [Console appearance](docs/CONSOLE.md)
 - [Building and testing](docs/BUILDING.md)
 - [Identity and retained upstream references](docs/BRANDING.md)
 - [Release checklist](docs/RELEASE-CHECKLIST.md)

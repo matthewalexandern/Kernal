@@ -1,0 +1,39 @@
+#!/bin/sh
+# Keep the console defaults after the packaged Bash prompt setup.
+set -eu
+
+profile=/etc/profile.d/55-kythos-console.sh
+test -f "$profile"
+test -x /usr/local/libexec/kythos-console-session
+test -x /usr/local/bin/kythos-console
+test -f /usr/share/kythos/console-tmux.conf
+/bin/bash -n "$profile"
+/usr/bin/infocmp tmux-256color > /dev/null
+
+for target in /etc/bash.bashrc /etc/skel/.bashrc /root/.bashrc; do
+    if ! grep -Fxq '# BEGIN KythOS console defaults' "$target"; then
+        cat >> "$target" <<'BASH'
+
+# BEGIN KythOS console defaults
+if [ -r /etc/profile.d/55-kythos-console.sh ]; then
+    . /etc/profile.d/55-kythos-console.sh
+fi
+# END KythOS console defaults
+BASH
+    fi
+    /bin/bash -n "$target"
+done
+
+# The native parser must accept the shipped configuration. This server owns
+# only a private temporary socket and a short-lived validation pane.
+work=$(mktemp -d /tmp/kythos-console-config.XXXXXXXX)
+cleanup()
+{
+    /usr/bin/tmux -S "$work/socket" kill-server >/dev/null 2>&1 || true
+    rm -rf -- "$work"
+}
+trap cleanup EXIT HUP INT TERM
+/usr/bin/tmux -S "$work/socket" -f /usr/share/kythos/console-tmux.conf \
+    new-session -d -s validate /bin/sleep 10
+test "$(/usr/bin/tmux -S "$work/socket" show-options -gv status-position)" = top
+printf '%s\n' 'KythOS fixed console header: native viewport configuration passed.'

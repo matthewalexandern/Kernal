@@ -1,0 +1,320 @@
+#!/usr/bin/python3 -I
+"""Local command proposals. Never execute a proposed command or read history."""
+
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import stat
+import sys
+import unicodedata
+
+
+CATALOGUE = Path('/usr/share/kythos/command-intents.json')
+MAX_INPUT_BYTES = 4096
+MAX_TOKENS = 64
+MAX_TOKEN_LENGTH = 256
+MAX_PATH_DIRECTORIES = 32
+MAX_DIRECTORY_ENTRIES = 4096
+MAX_COMMANDS = 8192
+SLOT = re.compile(r'^\{([a-z][a-z_]*)(\.\.\.)?\}$')
+USERNAME = re.compile(r'[A-Za-z_][A-Za-z0-9_.-]{0,31}\Z')
+PACKAGE = re.compile(r'[a-z0-9][a-z0-9+.-]*(?::[a-z0-9][a-z0-9-]*)?\Z')
+HOST = re.compile(r'(?:[A-Za-z_][A-Za-z0-9_.-]*@)?(?:[A-Za-z0-9][A-Za-z0-9_.-]*|\[[0-9A-Fa-f:]+\]|[0-9A-Fa-f:]+)\Z')
+COMMAND_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}\Z')
+UNSUPPORTED = frozenset(';|&<>`$(){}\\#!*?~')
+
+
+def tokenize(phrase):
+    """Parse literal arguments; shell programs, expansions and lines are refused."""
+    if not isinstance(phrase, str) or len(phrase.encode('utf-8')) > MAX_INPUT_BYTES:
+        raise ValueError('phrase is too long')
+    # One line terminator from printf/input is accepted; embedded lines are not.
+    if phrase.endswith('\n'):
+        phrase = phrase[:-1]
+        if phrase.endswith('\r'):
+            phrase = phrase[:-1]
+    if any(ord(c) < 32 and c != '\t' or ord(c) == 127 or c in '\u0085\u2028\u2029'
+           or unicodedata.category(c) == 'Cf'
+           or c in UNSUPPORTED for c in phrase):
+        raise ValueError('phrase contains unsupported shell syntax')
+    # A possessive is natural language, not an unterminated shell quote. Only
+    # this complete, known password phrase receives the possessive treatment.
+    phrase = re.sub(r"^\s*(change|reset)\s+([A-Za-z_][A-Za-z0-9_.-]{0,31})['’]s\s+password\s*$",
+                    r'\1 \2 password', phrase, flags=re.IGNORECASE)
+    try:
+        tokens = shlex.split(phrase, comments=False, posix=True)
+    except ValueError as exc:
+        raise ValueError('phrase contains unmatched quotes') from exc
+    if len(tokens) > MAX_TOKENS or any(len(t) > MAX_TOKEN_LENGTH for t in tokens):
+        raise ValueError('phrase has too many or oversized arguments')
+    return tokens
+
+
+def load_catalogue(path=CATALOGUE):
+    with Path(path).open('rb') as source:
+        raw = source.read(131073)
+    if len(raw) > 131072:
+        raise ValueError('catalogue is too large')
+    catalogue = json.loads(raw)
+    if catalogue.get('schema_version') != 1:
+        raise ValueError('unsupported catalogue version')
+    intents = catalogue.get('intents')
+    if not isinstance(intents, list) or len(intents) > 128:
+        raise ValueError('invalid intent catalogue')
+    for intent in intents:
+        if (not isinstance(intent, dict) or intent.get('kind') not in
+                ('suggestion', 'incomplete', 'ambiguous') or
+                not re.fullmatch('[a-z][a-z0-9-]*', intent.get('id', '')) or
+                not isinstance(intent.get('message'), str) or
+                any(c in intent['message'] for c in '\r\n') or
+                not isinstance(intent.get('privileged', False), bool)):
+            raise ValueError('invalid intent definition')
+        patterns = intent.get('patterns')
+        if not isinstance(patterns, list) or not patterns or len(patterns) > 64:
+            raise ValueError('invalid intent patterns')
+        arguments = intent.get('arguments', {})
+        if (not isinstance(arguments, dict) or
+                any(v not in ('username', 'package', 'host', 'query') for v in arguments.values())):
+            raise ValueError('invalid argument types')
+        for pattern in patterns:
+            if not isinstance(pattern, list) or not pattern or len(pattern) > MAX_TOKENS:
+                raise ValueError('invalid intent pattern')
+            seen = set()
+            for i, token in enumerate(pattern):
+                if not isinstance(token, str) or not token or len(token) > MAX_TOKEN_LENGTH:
+                    raise ValueError('invalid intent token')
+                slot = SLOT.fullmatch(token)
+                if slot:
+                    name, many = slot.groups()
+                    if name not in arguments or name in seen or many and i != len(pattern) - 1:
+                        raise ValueError('invalid intent argument slot')
+                    seen.add(name)
+        command = intent.get('command', [])
+        if (not isinstance(command, list) or
+                intent['kind'] == 'suggestion' and not command or
+                intent['kind'] != 'suggestion' and command):
+            raise ValueError('invalid intent command')
+        for token in command:
+            if not isinstance(token, str) or not token or any(c in token for c in '\r\n'):
+                raise ValueError('invalid command token')
+            slot = SLOT.fullmatch(token)
+            if slot and slot[1] not in arguments:
+                raise ValueError('undefined command argument')
+    actions = catalogue.get('command_actions', [])
+    if not isinstance(actions, list) or len(actions) > 16:
+        raise ValueError('invalid command action catalogue')
+    for group in actions:
+        if (not isinstance(group, dict) or not COMMAND_NAME.fullmatch(group.get('command', ''))
+                or not isinstance(group.get('actions'), dict) or len(group['actions']) > 64
+                or any(not COMMAND_NAME.fullmatch(k) or not isinstance(v, bool)
+                       for k, v in group['actions'].items())):
+            raise ValueError('invalid command actions')
+    return catalogue
+
+
+def one_edit(left, right):
+    """One insertion, deletion, substitution or adjacent transposition."""
+    if left == right:
+        return 0
+    if abs(len(left) - len(right)) > 1:
+        return 2
+    if len(left) == len(right):
+        different = [i for i, (a, b) in enumerate(zip(left, right)) if a != b]
+        if len(different) == 1:
+            return 1
+        if (len(different) == 2 and different[1] == different[0] + 1 and
+                left[different[0]] == right[different[1]] and
+                left[different[1]] == right[different[0]]):
+            return 1
+        return 2
+    shorter, longer = (left, right) if len(left) < len(right) else (right, left)
+    for i, (a, b) in enumerate(zip(shorter, longer)):
+        if a != b:
+            return 1 if shorter[i:] == longer[i + 1:] else 2
+    return 1
+
+
+def argument_valid(kind, values):
+    if not values or any(not v or v.startswith('-') for v in values):
+        return False
+    expression = {'username': USERNAME, 'package': PACKAGE, 'host': HOST}.get(kind)
+    return all(expression.fullmatch(v) for v in values) if expression else True
+
+
+def match_pattern(pattern, tokens, arguments, fuzzy):
+    captured = {}
+    offset = score = 0
+    for piece in pattern:
+        slot = SLOT.fullmatch(piece)
+        if slot:
+            name, many = slot.groups()
+            values = tokens[offset:] if many else tokens[offset:offset + 1]
+            if not argument_valid(arguments[name], values):
+                return None
+            captured[name] = values
+            offset += len(values)
+        else:
+            if offset == len(tokens):
+                return None
+            actual = tokens[offset].casefold()
+            expected = piece.casefold()
+            cost = one_edit(actual, expected) if fuzzy and len(expected) >= 3 else int(actual != expected) * 2
+            score += cost
+            if score > int(fuzzy):
+                return None
+            offset += 1
+    return (score, captured) if offset == len(tokens) else None
+
+
+def proposal(intent, captured, root):
+    result = {'kind': intent['kind'], 'command': None,
+              'message': intent['message'].format_map({k: ' '.join(v) for k, v in captured.items()}),
+              'intent': intent['id']}
+    if intent['kind'] == 'suggestion':
+        argv = []
+        for token in intent['command']:
+            slot = SLOT.fullmatch(token)
+            argv.extend(captured[slot[1]] if slot else [token])
+        if intent.get('privileged') and not root:
+            argv.insert(0, 'sudo')
+        result['command'] = shlex.join(argv)
+    return result
+
+
+def choose_intent(catalogue, tokens, root, fuzzy=False):
+    matches = []
+    for intent in catalogue['intents']:
+        for pattern in intent['patterns']:
+            matched = match_pattern(pattern, tokens, intent.get('arguments', {}), fuzzy)
+            if matched is not None:
+                score, captured = matched
+                matches.append((score, proposal(intent, captured, root)))
+    if not matches:
+        return None
+    best = min(score for score, _ in matches)
+    outcomes = {json.dumps(result, sort_keys=True) for score, result in matches if score == best}
+    if len(outcomes) == 1:
+        return json.loads(outcomes.pop())
+    return {'kind': 'ambiguous', 'command': None, 'intent': 'ambiguous-phrase',
+            'message': 'This phrase has more than one meaning. Use a more specific command or target.'}
+
+
+def discover_commands(path=None):
+    """Inspect executable regular files only. Never execute PATH entries."""
+    directories = (os.environ.get('PATH', '') if path is None else path).split(os.pathsep)
+    if len(directories) > MAX_PATH_DIRECTORIES:
+        return set(), False
+    commands = set()
+    for directory in dict.fromkeys(directories):
+        # Ignore current-directory and relative entries; do not invent a new
+        # trusted executable from a working directory.
+        if not os.path.isabs(directory):
+            continue
+        try:
+            with os.scandir(directory) as entries:
+                for count, entry in enumerate(entries, 1):
+                    if count > MAX_DIRECTORY_ENTRIES:
+                        return commands, False
+                    if not COMMAND_NAME.fullmatch(entry.name):
+                        continue
+                    try:
+                        mode = entry.stat(follow_symlinks=True).st_mode
+                        if stat.S_ISREG(mode) and os.access(entry.path, os.X_OK):
+                            commands.add(entry.name)
+                    except OSError:
+                        continue
+                    if len(commands) > MAX_COMMANDS:
+                        return commands, False
+        except OSError:
+            continue
+    return commands, True
+
+
+def action_typo(catalogue, tokens, root):
+    explicit_sudo = tokens[0] == 'sudo'
+    argv = tokens[1:] if explicit_sudo else tokens
+    if len(argv) < 2:
+        return None
+    for group in catalogue.get('command_actions', []):
+        if argv[0] != group['command'] or argv[1] in group['actions'] or len(argv[1]) < 4:
+            continue
+        candidates = sorted(a for a in group['actions'] if one_edit(argv[1], a) == 1)
+        if not candidates:
+            return None
+        if len(candidates) > 1:
+            return {'kind': 'ambiguous', 'command': None, 'intent': 'ambiguous-action-typo',
+                    'message': 'More than one package action matches. Type the intended action explicitly.'}
+        action = candidates[0]
+        corrected = [argv[0], action, *argv[2:]]
+        if not root and (explicit_sudo or group['actions'][action]):
+            corrected.insert(0, 'sudo')
+        return {'kind': 'suggestion', 'command': shlex.join(corrected), 'intent': 'package-action-typo',
+                'message': 'Correct the package action only; keep every supplied argument unchanged.'}
+    return None
+
+
+def suggest(phrase, catalogue, *, root=None, path=None):
+    tokens = tokenize(phrase)
+    if not tokens:
+        return None
+    root = os.geteuid() == 0 if root is None else root
+    result = choose_intent(catalogue, tokens, root)
+    if result is not None:
+        return result
+    result = action_typo(catalogue, tokens, root)
+    if result is not None:
+        return result
+    commands, complete = discover_commands(path)
+    # An exact existing command never receives generic fuzzy reinterpretation.
+    if tokens[0] in commands or not complete:
+        return None
+    result = choose_intent(catalogue, tokens, root, fuzzy=True)
+    if result is not None:
+        return result
+    if len(tokens[0]) < 4 or not COMMAND_NAME.fullmatch(tokens[0]):
+        return None
+    # Shell glob expansion belongs to Bash. Quoting a bracket expression here
+    # could silently change its meaning. Explicit IPv6 host slots above remain
+    # available because their intended literal argument is known.
+    if any('[' in token or ']' in token for token in tokens[1:]):
+        return None
+    candidates = sorted(c for c in commands if one_edit(tokens[0], c) == 1)
+    if not candidates:
+        return None
+    if len(candidates) > 1:
+        return {'kind': 'ambiguous', 'command': None, 'intent': 'ambiguous-command-typo',
+                'message': 'More than one executable matches this command. Type its full name.'}
+    return {'kind': 'suggestion', 'command': shlex.join([candidates[0], *tokens[1:]]),
+            'message': 'Correct the executable name only; keep every supplied argument unchanged.',
+            'intent': 'command-typo'}
+
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    if argv not in (['--json'], ['--shell']):
+        print('Usage: kythos-command-suggest --json | --shell < single-phrase', file=sys.stderr)
+        return 2
+    try:
+        raw = sys.stdin.buffer.read(MAX_INPUT_BYTES + 1)
+        if len(raw) > MAX_INPUT_BYTES:
+            raise ValueError('phrase is too long')
+        phrase = raw.decode('utf-8', errors='strict')
+        result = suggest(phrase, load_catalogue())
+    except (ValueError, OSError, KeyError, TypeError) as exc:
+        # Error classes are useful; input and filesystem details stay private.
+        message = str(exc) if isinstance(exc, ValueError) and not isinstance(exc, json.JSONDecodeError) else 'suggestions are unavailable'
+        print('KythOS suggestions: ' + message, file=sys.stderr)
+        return 2
+    if argv == ['--shell']:
+        print((result['command'] or '') if result else '')
+        print(result['message'] if result else '')
+        print(result['kind'] if result else 'none')
+    elif result is not None:
+        print(json.dumps(result, ensure_ascii=True, sort_keys=True))
+    return 0 if result is not None else 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

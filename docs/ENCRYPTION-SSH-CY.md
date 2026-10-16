@@ -209,14 +209,30 @@ cy help
 cy search package-name
 cy show package-name
 cy list --installed
+cy list --upgradable
 sudo cy update
 sudo cy install package-name
 sudo cy full-upgrade
 sudo cy remove package-name
 ```
 
-`cy` passes arguments directly to the packaged `/usr/bin/apt` implementation
-without shell evaluation. It refuses command-line switches that bypass package
+`cy` passes user arguments directly to the packaged `/usr/bin/apt`
+implementation without shell evaluation. Two fixed native presentation options
+hide APT's update statistics and unused-package advice, which contain hardcoded
+`apt` command hints. This also suppresses the update count, the all-up-to-date
+message, and the advisory list of automatically installed packages that are no
+longer needed. It does not change package selection or the explicit
+`cy autoremove` action. Inspect upgrade candidates with `cy list --upgradable`
+and preview unused-package removal with `cy --simulate autoremove`.
+
+An interactive `cy update` prints a KythOS hint for `cy list --upgradable`
+before the backend starts. The hint does not claim that updating succeeded or
+that any upgrades exist. It is omitted when output is redirected, a quiet or
+silent option is supplied, or URIs are requested for machine use. The backend
+keeps its terminal, signals, exit status, and version/provenance output; no
+output filter or alternate APT build is used.
+
+`cy` refuses command-line switches that bypass package
 authentication or permit removal of essential or held packages. It also
 refuses alternate APT configuration files and inline configuration overrides,
 which could indirectly disable those protections. Local `.deb` paths and

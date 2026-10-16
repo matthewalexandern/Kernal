@@ -12,6 +12,7 @@ Find and inspect packages:
   cy search words
   cy show package-name
   cy list --installed
+  cy list --upgradable
 
 Manage system packages with administrator permission:
   sudo cy update
@@ -89,4 +90,29 @@ for argument do
     esac
 done
 
-exec /usr/bin/apt "$@"
+# Native UI controls suppress APT's hardcoded apt-command hints. They do not
+# alter package selection, authentication, or the explicit autoremove action.
+# Keep this a direct exec so terminal access, exit status and signals belong
+# to the packaged backend, with every user argument preserved.
+cy_command=
+cy_show_update_tip=true
+for argument do
+    case "$argument" in
+        --quiet|--quiet=*|--silent|--silent=*|--version|\
+        --print-uris|--print-uris=*)
+            cy_show_update_tip=false
+            ;;
+        --*) ;;
+        -q*|-v*|-[!-]*q*|-[!-]*v*) cy_show_update_tip=false ;;
+        -*) ;;
+        *)
+            if test -z "$cy_command"; then
+                cy_command=$argument
+            fi
+            ;;
+    esac
+done
+if test "$cy_command" = update && test "$cy_show_update_tip" = true && test -t 1; then
+    printf '%s\n' 'cy: To inspect available upgrades after this command, use: cy list --upgradable'
+fi
+exec /usr/bin/apt -o APT::Cmd::Show-Update-Stats=false -o APT::Get::HideAutoRemove=true "$@"
