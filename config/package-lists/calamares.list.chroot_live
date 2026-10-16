@@ -14,7 +14,6 @@ xterm
 dbus-x11
 rsync
 squashfs-tools
-fonts-dejavu-core
 qml6-module-qtquick
 qml6-module-qtquick-controls
 qml6-module-qtquick-layouts

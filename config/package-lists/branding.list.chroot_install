@@ -1,3 +1,5 @@
 # Graphical boot with a visible encrypted-volume passphrase prompt.
 plymouth
 plymouth-themes
+# Boot and encryption prompts keep their font after the installer is removed.
+fonts-dejavu-core
