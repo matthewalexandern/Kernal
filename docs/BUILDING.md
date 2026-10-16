@@ -124,8 +124,10 @@ copyright, source, and license notices remain available where required.
 KythOS identity is written to both OS release files and both ISO disk labels.
 The distinct dpkg vendor inherits from Debian; signed Debian repository Origin,
 package copyright, and compatibility identifiers remain intact as provenance.
-The KythOS MIT license is included at both ISO roots and in the installed
-system.
+The KythOS MIT license and attribution NOTICE are included at both ISO roots
+and in the installed system. OS identity files use local dpkg diversions so
+base-files upgrades preserve KythOS Kernal branding. See
+[BRANDING.md](BRANDING.md) for the display name and retained upstream interfaces.
 
 ## Regenerating boot artwork
 

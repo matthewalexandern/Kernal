@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+
+native=/usr/lib/cdebconf/debconf-loadtemplate
+wrapper=/usr/lib/kythos/debconf-loadtemplate
+
+test -x "$native"
+test -x "$wrapper"
+
+# The stock /usr/bin entry is a symlink to the native loader. Replace only
+# that symlink before S20templates runs, leaving the upstream native executable
+# available for the wrapper and covering templates installed later by udpkg.
+ln -sfn "$wrapper" /usr/bin/debconf-loadtemplate

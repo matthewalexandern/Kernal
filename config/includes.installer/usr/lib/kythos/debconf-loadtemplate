@@ -1,0 +1,38 @@
+#!/bin/sh
+set -eu
+
+native=/usr/lib/cdebconf/debconf-loadtemplate
+transform=/usr/lib/kythos/transform-installer-template
+
+test -x "$native"
+test -x "$transform"
+
+temporary=
+cleanup()
+{
+    if test -n "$temporary"; then
+        rm -f -- "$temporary"
+    fi
+}
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+
+# S20templates and udpkg both pass ephemeral *.templates files to this
+# command. Transform those files in the installer RAM filesystem, then invoke
+# cdebconf's original loader with the exact original argument vector.
+for candidate in "$@"; do
+    case "$candidate" in
+        *.templates)
+            if test -f "$candidate"; then
+                temporary="${candidate}.kythos.$$"
+                "$transform" "$candidate" "$temporary"
+                chmod 0600 "$temporary"
+                mv -f -- "$temporary" "$candidate"
+                temporary=
+            fi
+            ;;
+    esac
+done
+
+trap - EXIT HUP INT TERM
+exec "$native" "$@"

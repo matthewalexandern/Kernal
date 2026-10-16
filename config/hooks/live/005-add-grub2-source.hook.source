@@ -186,6 +186,7 @@ fi
 
 cp "$required_tuples" required-source-tuples.tsv
 cp ../LICENSE LICENSE
+cp ../NOTICE NOTICE
 version=$(cat ../VERSION)
 printf 'KythOS Kernal %s amd64 source\n' "$version" > .disk/info
 

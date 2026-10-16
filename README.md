@@ -90,6 +90,7 @@ packages require the recipient to accept separate license terms.
 - [Encryption, SSH, and `cy`](docs/ENCRYPTION-SSH-CY.md)
 - [NVIDIA driver path](docs/NVIDIA.md)
 - [Building and testing](docs/BUILDING.md)
+- [Identity and retained upstream references](docs/BRANDING.md)
 - [Release checklist](docs/RELEASE-CHECKLIST.md)
 - [Security reporting](SECURITY.md)
 

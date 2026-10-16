@@ -142,15 +142,15 @@ if [[ -n ${KYTHOS_CACHE_SEED:-} ]]; then
     ) > "$cache_seed_manifest"
 fi
 
-cp -a "$repo_root/auto" "$repo_root/config" "$repo_root/LICENSE" \
+cp -a "$repo_root/auto" "$repo_root/config" "$repo_root/LICENSE" "$repo_root/NOTICE" \
     "$repo_root/SNAPSHOT" "$repo_root/VERSION" "$build_root/"
 # A release build may start from a checkout owned by an unprivileged account.
 # Normalize the copied image recipe so no builder UID or private umask leaks
 # into the live filesystem or installer overlay.
 chown -R 0:0 "$build_root/auto" "$build_root/config" \
-    "$build_root/LICENSE" "$build_root/SNAPSHOT" "$build_root/VERSION"
+    "$build_root/LICENSE" "$build_root/NOTICE" "$build_root/SNAPSHOT" "$build_root/VERSION"
 chmod -R u=rwX,go=rX "$build_root/auto" "$build_root/config"
-chmod 0644 "$build_root/LICENSE" "$build_root/SNAPSHOT" "$build_root/VERSION"
+chmod 0644 "$build_root/LICENSE" "$build_root/NOTICE" "$build_root/SNAPSHOT" "$build_root/VERSION"
 install -d -m 0755 "$build_root/config/includes.chroot/usr/share/kythos"
 install -m 0644 "$repo_root/VERSION" \
     "$build_root/config/includes.chroot/usr/share/kythos/version"
@@ -162,6 +162,10 @@ install -m 0644 "$repo_root/LICENSE" \
 install -m 0644 "$repo_root/LICENSE" \
     "$build_root/config/includes.binary/LICENSE"
 install -m 0644 "$repo_root/LICENSE" "$artifact_root/LICENSE"
+install -m 0644 "$repo_root/NOTICE" \
+    "$build_root/config/includes.chroot/usr/share/doc/kythos-kernal/NOTICE"
+install -m 0644 "$repo_root/NOTICE" "$build_root/config/includes.binary/NOTICE"
+install -m 0644 "$repo_root/NOTICE" "$artifact_root/NOTICE"
 install -o root -g root -m 0755 \
     "$repo_root/scripts/audit-source-coverage.sh" \
     "$build_root/audit-source-coverage.sh"
@@ -178,6 +182,13 @@ required_source_recipe_files=(
     assets/branding/kythos-mark-cyan-source.png
     scripts/render-branding.py
     LICENSE
+    NOTICE
+    docs/BRANDING.md
+    config/includes.installer/etc/lsb-release
+    config/includes.installer/usr/lib/debian-installer-startup.d/S19kythos-branding
+    config/includes.installer/usr/lib/kythos/debconf-loadtemplate
+    config/includes.installer/usr/lib/kythos/transform-installer-template
+    tests/test-installer-branding.sh
 )
 for required_source_recipe_file in "${required_source_recipe_files[@]}"
 do
@@ -191,8 +202,10 @@ done
 for required_source_recipe_file in "${required_source_recipe_files[@]}"
 do
     source_recipe_mode=0644
-    [[ $required_source_recipe_file != scripts/render-branding.py ]] \
-        || source_recipe_mode=0755
+    case "$required_source_recipe_file" in
+        scripts/render-branding.py|tests/*.sh|*/S19kythos-branding|*/debconf-loadtemplate|*/transform-installer-template)
+            source_recipe_mode=0755 ;;
+    esac
     install -d -o root -g root -m 0755 \
         "$source_recipe_root/$(dirname -- "$required_source_recipe_file")"
     install -o root -g root -m "$source_recipe_mode" \
@@ -201,7 +214,7 @@ do
 done
 (
     cd "$source_recipe_root"
-    find LICENSE assets scripts -type f -print0 \
+    find LICENSE NOTICE assets scripts docs config tests -type f -print0 \
         | LC_ALL=C sort -z | xargs -0 sha256sum > SHA256SUMS
     sha256sum --check SHA256SUMS
 )
@@ -216,7 +229,7 @@ done
             assets/branding/kythos-installer-banner-source.png \
             assets/branding/kythos-mark-cyan-source.png \
             tools/qemu-builder/preseed.cfg
-        printf 'LICENSE\0SNAPSHOT\0VERSION\0'
+        printf 'LICENSE\0NOTICE\0docs/BRANDING.md\0SNAPSHOT\0VERSION\0'
     } | LC_ALL=C sort -z | xargs -0 sha256sum
 ) > "$artifact_root/recipe-SHA256SUMS"
 

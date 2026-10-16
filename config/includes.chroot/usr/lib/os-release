@@ -1,7 +1,7 @@
 PRETTY_NAME="KythOS Kernal 0.1.0"
 NAME="KythOS Kernal"
 VERSION_ID="0.1.0"
-VERSION="0.1.0 (Debian 13 trixie compatible)"
+VERSION="0.1.0"
 VERSION_CODENAME=trixie
 ID=kythos
 ID_LIKE=debian

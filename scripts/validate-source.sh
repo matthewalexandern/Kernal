@@ -25,12 +25,16 @@ for script in \
     "$repo_root/scripts/validate-source.sh" \
     "$repo_root/tests/test-recovery-topology.sh" \
     "$repo_root/tests/test-tpm2-pcrread-parser.sh" \
+    "$repo_root/tests/test-installer-branding.sh" \
     "$repo_root/config/hooks/live/005-add-grub2-source.hook.source" \
     "$repo_root/config/hooks/live/010-enable-security.hook.chroot" \
     "$repo_root/config/hooks/live/015-prepare-compliance.hook.chroot" \
     "$repo_root/config/hooks/live/020-enable-branding.hook.binary" \
     "$repo_root/config/hooks/live/020-enable-branding.hook.chroot" \
     "$repo_root/config/hooks/live/030-configure-authentication.hook.chroot" \
+    "$repo_root/config/includes.installer/usr/lib/debian-installer-startup.d/S19kythos-branding" \
+    "$repo_root/config/includes.installer/usr/lib/kythos/debconf-loadtemplate" \
+    "$repo_root/config/includes.installer/usr/lib/kythos/transform-installer-template" \
     "$repo_root/config/hooks/live/090-record-manifest.hook.chroot" \
     "$repo_root/config/includes.chroot/usr/local/bin/cy" \
     "$repo_root/config/includes.chroot/usr/local/libexec/kythos-aide-initialize" \
@@ -103,6 +107,7 @@ check_contains "$source_hook" 'comm -23 "$required_tuples" "$provided_tuples"'
 check_contains "$source_hook" 'binary-source-manifest.tsv'
 check_contains "$source_hook" 'required-source-tuples.tsv'
 check_contains "$source_hook" 'cp ../LICENSE LICENSE'
+check_contains "$source_hook" 'cp ../NOTICE NOTICE'
 check_contains "$source_hook" 'expected_header=$(cat'
 check_contains "$source_hook" 'test "$report_lines" -eq 6'
 check_contains "$source_hook" 'snapshot_metadata_directory=../snapshot-InRelease'
@@ -160,6 +165,11 @@ check_contains "$os_release" 'ID=kythos'
 check_contains "$os_release" 'ID_LIKE=debian'
 check_contains "$os_release" 'VARIANT_ID=kythos'
 check_contains "$os_release" "KYTHOS_VERSION_ID=\"$version\""
+check_contains "$os_release" "VERSION=\"$version\""
+check_contains "$os_release" 'NAME="KythOS Kernal"'
+if grep -E '^(PRETTY_NAME|NAME|VERSION|VARIANT)=' "$os_release" | grep -qi debian; then
+    fail 'visible OS identity still contains the parent distribution name'
+fi
 
 for branding_file in \
     "$repo_root/assets/branding/kythos-mark-cyan-source.png" \
@@ -183,7 +193,7 @@ python3 "$repo_root/scripts/render-branding.py" --check \
 check_contains "$repo_root/config/bootloaders/grub-pc/grub.cfg" \
     'Start KythOS Kernal'
 check_contains "$repo_root/config/includes.chroot/usr/share/plymouth/themes/kythos/kythos.plymouth" \
-    'Name=KythOS'
+    'Name=KythOS Kernal'
 plymouth_script="$repo_root/config/includes.chroot/usr/share/plymouth/themes/kythos/kythos.script"
 check_contains "$plymouth_script" 'Image("kythos-logo.png")'
 check_contains "$plymouth_script" 'Plymouth.SetRefreshRate('
@@ -205,6 +215,12 @@ check_contains "$branding_hook" 'SOURCE_DATE_EPOCH must be a decimal Unix timest
 check_contains "$branding_hook" 'install -o root -g root -m 0644 "$os_release_temporary" /etc/os-release'
 check_contains "$branding_hook" 'IMAGE_ID=kythos-live'
 check_contains "$branding_hook" 'Parent: Debian'
+check_contains "$branding_hook" 'dpkg-divert --local --add --no-rename'
+check_contains "$branding_hook" 'for identity_file in /usr/lib/os-release /etc/os-release'
+check_contains "$repo_root/NOTICE" \
+    'Debian is a registered trademark owned by Software in the Public Interest, Inc.'
+check_contains "$repo_root/scripts/build.sh" '"$repo_root/NOTICE" "$build_root/config/includes.binary/NOTICE"'
+check_contains "$repo_root/scripts/audit-source-coverage.sh" 'installed-notice'
 check_contains "$repo_root/config/hooks/live/020-enable-branding.hook.binary" \
     'KythOS Kernal %s amd64 Binary'
 check_contains "$repo_root/config/hooks/live/020-enable-branding.hook.binary" \
@@ -235,12 +251,22 @@ check_contains "$access_packages" 'clevis-tpm2'
 installer_preseed="$repo_root/config/includes.installer/preseed.cfg"
 check_contains "$installer_preseed" 'd-i passwd/root-login boolean false'
 check_contains "$installer_preseed" 'd-i user-setup/allow-password-weak boolean true'
+installer_release="$repo_root/config/includes.installer/etc/lsb-release"
+check_contains "$installer_release" 'DISTRIB_ID=KythOS'
+check_contains "$installer_release" 'DISTRIB_DESCRIPTION="KythOS Kernal installer"'
+check_contains "$installer_release" "DISTRIB_RELEASE=\"$version\""
+check_contains "$installer_release" 'DISTRIB_CODENAME=trixie'
+check_contains "$repo_root/config/includes.installer/usr/lib/debian-installer-startup.d/S19kythos-branding" \
+    'ln -sfn "$wrapper" /usr/bin/debconf-loadtemplate'
+"$repo_root/tests/test-installer-branding.sh" \
+    || fail 'installer identity transform tests failed'
 
 ssh_config="$repo_root/config/includes.chroot/etc/ssh/sshd_config.d/10-kythos-authentication.conf"
 check_contains "$ssh_config" 'PasswordAuthentication yes'
 check_contains "$ssh_config" 'PermitRootLogin no'
 check_contains "$ssh_config" 'PermitEmptyPasswords no'
 check_contains "$ssh_config" 'PermitUserEnvironment no'
+check_contains "$ssh_config" 'DebianBanner no'
 
 ssh_service_dropin="$repo_root/config/includes.chroot/etc/systemd/system/ssh.service.d/60-kythos-live.conf"
 check_contains "$ssh_service_dropin" 'ConditionPathExists=!/run/live/medium'

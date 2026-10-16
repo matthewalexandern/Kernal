@@ -16,6 +16,7 @@ source_iso=$(readlink -f -- "$2")
 output_directory=$(readlink -f -- "$3")
 script_directory=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 license_file=$script_directory/LICENSE
+notice_file=$script_directory/NOTICE
 for required_file in "$binary_iso" "$source_iso"; do
     [[ -f $required_file ]] || {
         printf 'Missing ISO: %s\n' "$required_file" >&2
@@ -24,6 +25,10 @@ for required_file in "$binary_iso" "$source_iso"; do
 done
 [[ -f $license_file ]] || {
     printf 'Missing canonical KythOS license: %s\n' "$license_file" >&2
+    exit 1
+}
+[[ -f $notice_file ]] || {
+    printf 'Missing canonical KythOS notice: %s\n' "$notice_file" >&2
     exit 1
 }
 [[ -d $output_directory && ! -L $output_directory ]] || {
@@ -78,6 +83,18 @@ cmp -s "$license_file" "$audit_root/installed-license" || {
     printf '%s\n' 'Installed KythOS license differs from the project license.' >&2
     exit 1
 }
+for image_mount in "$binary_mount" "$source_mount"; do
+    cmp -s "$notice_file" "$image_mount/NOTICE" || {
+        printf '%s\n' 'ISO attribution notice differs from the project notice.' >&2
+        exit 1
+    }
+done
+unsquashfs -cat "$binary_mount/live/filesystem.squashfs" \
+    usr/share/doc/kythos-kernal/NOTICE > "$audit_root/installed-notice"
+cmp -s "$notice_file" "$audit_root/installed-notice" || {
+    printf '%s\n' 'Installed attribution notice differs from the project notice.' >&2
+    exit 1
+}
 
 grep -Eq '^KythOS Kernal [^[:space:]]+ amd64 Binary$' \
     "$binary_mount/.disk/info" || {
@@ -99,6 +116,7 @@ cmp -s "$audit_root/etc-os-release" "$audit_root/usr-lib-os-release" || {
 }
 grep -Fxq 'ID=kythos' "$audit_root/etc-os-release" \
     && grep -Fxq 'ID_LIKE=debian' "$audit_root/etc-os-release" \
+    && grep -Fxq 'NAME="KythOS Kernal"' "$audit_root/etc-os-release" \
     && grep -Fxq 'IMAGE_ID=kythos-live' "$audit_root/etc-os-release" || {
     printf '%s\n' 'Installed OS identity fields are incomplete.' >&2
     exit 1

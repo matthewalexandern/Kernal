@@ -1,0 +1,108 @@
+#!/bin/sh
+set -eu
+
+if test "$#" -ne 2; then
+    printf 'Usage: %s INPUT OUTPUT\n' "$0" >&2
+    exit 2
+fi
+
+input=$1
+output=$2
+
+test -f "$input"
+
+# Only the display fields of templates that identify this installer or the
+# installed operating system are branded. Template names, machine-readable
+# choices, defaults, repository names, URLs, and Debian archive provenance
+# remain byte-for-byte unchanged.
+awk '
+function carries_kythos_identity(name) {
+    return name == "debian-installer/main-menu-title" \
+        || name == "debian-installer/terminal-plugin-unavailable" \
+        || name == "cdrom-checker/askmount" \
+        || name == "cdrom-checker/wrongcd" \
+        || name == "cdrom-checker/firstcd" \
+        || name == "grub-installer/with_other_os" \
+        || name == "grub-installer/update-nvram" \
+        || name == "network-console/login" \
+        || name == "network-console/password" \
+        || name == "partman-crypto/tools_missing" \
+        || name == "partman-efi/non_efi_system"
+}
+
+function identifier_character(character) {
+    return character ~ /^[[:alnum:]_]$/
+}
+
+function protected_token(value, position, width, start, finish, token, lower) {
+    start = position
+    while (start > 1 && substr(value, start - 1, 1) !~ /[[:space:]]/)
+        start--
+    finish = position + width
+    while (finish <= length(value) \
+           && substr(value, finish, 1) !~ /[[:space:]]/)
+        finish++
+
+    token = substr(value, start, finish - start)
+    lower = tolower(token)
+    return index(token, "${") \
+        || index(token, "/") \
+        || index(token, "\\") \
+        || index(token, "@") \
+        || lower ~ /^(https?|ftp|file|mailto):/ \
+        || token ~ /[[:alnum:]-]+\.[[:alnum:]-]+/
+}
+
+function replace_identity(value, result, position, width, fragment, before, after) {
+    result = ""
+    position = 1
+    while (position <= length(value)) {
+        width = 0
+        fragment = tolower(substr(value, position, 16))
+        if (fragment == "debian-installer" \
+            || fragment == "debian installer")
+            width = 16
+        else if (tolower(substr(value, position, 6)) == "debian")
+            width = 6
+
+        if (width) {
+            before = position > 1 ? substr(value, position - 1, 1) : ""
+            after = substr(value, position + width, 1)
+            if (identifier_character(before) || identifier_character(after) \
+                || protected_token(value, position, width))
+                width = 0
+        }
+
+        if (width) {
+            if (width == 16)
+                result = result "KythOS Kernal installer"
+            else
+                result = result "KythOS Kernal"
+            position += width
+        } else {
+            result = result substr(value, position, 1)
+            position++
+        }
+    }
+    return result
+}
+
+/^Template:[[:space:]]*/ {
+    template = $0
+    sub(/^Template:[[:space:]]*/, "", template)
+    in_description = 0
+}
+
+{
+    if ($0 ~ /^Description([-.][^:]*)?:/) {
+        in_description = 1
+    } else if ($0 !~ /^[[:space:]]/) {
+        in_description = 0
+    }
+
+    if (carries_kythos_identity(template) && in_description)
+        print replace_identity($0)
+    else
+        print
+}
+' "$input" > "$output"
