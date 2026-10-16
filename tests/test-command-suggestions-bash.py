@@ -16,6 +16,7 @@ import tempfile
 import termios
 import time
 import unittest
+from unittest import mock
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,7 +27,16 @@ BASH = os.environ.get('KYTHOS_TEST_BASH') or shutil.which('bash')
 
 
 class Terminal:
+    SNAPSHOT_DONE = b'__KYTHOS_STATE_DONE__'
+
     def __init__(self, directory, before='', after=''):
+        self.process = None
+        self.master = None
+        self._slave = None
+        self.pending = bytearray()
+        self.transcript = bytearray()
+        self._capture_ready = False
+        self._command_number = 0
         self.directory = Path(directory)
         self.state_path = self.directory / 'readline-state'
         self.log = self.directory / 'executed.jsonl'
@@ -46,9 +56,6 @@ class Terminal:
         profile = self.directory / 'suggestions.sh'
         profile.write_text(PROFILE.read_text().replace('/usr/local/libexec/kythos-command-suggest', str(engine)))
         self.profile = profile
-        master, slave = pty.openpty()
-        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 32, 160, 0, 0))
-
         def controlling_terminal():
             os.setsid()
             fcntl.ioctl(0, termios.TIOCSCTTY, 0)
@@ -57,27 +64,31 @@ class Terminal:
                    HISTFILE=str(self.directory / 'history'),
                    PATH=f'{self.bin}:/usr/bin:/bin', PS1='__PTY__> ', PS2='__MORE__> ')
         env.pop('KYTHOS_SUGGESTIONS', None)
-        self.process = subprocess.Popen([BASH, '--noprofile', '--norc', '-i'],
-                                        stdin=slave, stdout=slave, stderr=slave,
-                                        cwd=self.directory, env=env,
-                                        preexec_fn=controlling_terminal)
-        os.close(slave)
-        self.master = master
-        self.transcript = bytearray()
-        self.wait_for(b'__PTY__> ')
-        # A private test-only bind-x observes the actual edit buffer without Enter.
-        capture = ("__test_capture() { builtin printf '%s\\n%s\\n' "
-                   f'"$READLINE_LINE" "$READLINE_POINT" > {shlex.quote(str(self.state_path))}; }}; '
-                   "bind -x '\"\\e[98~\": __test_capture'")
         try:
+            self.master, self._slave = pty.openpty()
+            fcntl.ioctl(self._slave, termios.TIOCSWINSZ, struct.pack('HHHH', 32, 160, 0, 0))
+            self.process = subprocess.Popen([BASH, '--noprofile', '--norc', '-i'],
+                                            stdin=self._slave, stdout=self._slave, stderr=self._slave,
+                                            cwd=self.directory, env=env,
+                                            preexec_fn=controlling_terminal)
+            os.close(self._slave)
+            self._slave = None
+            self.wait_for(b'__PTY__> ')
+            # The terminator proves printf finished; file creation alone does
+            # not mean the snapshot contents have arrived yet.
+            capture = ("__test_capture() { builtin printf '%s\\0%s\\0"
+                       + self.SNAPSHOT_DONE.decode() + "\\0' "
+                       + f'"$READLINE_LINE" "$READLINE_POINT" > {shlex.quote(str(self.state_path))}; }}; '
+                       + "bind -x '\"\\e[98~\": __test_capture'")
             self.command('PS1="__PTY__> "; ' + capture + '; ' + before +
                          ('; ' if before else '') + f'source {shlex.quote(str(profile))}' +
                          ('; ' + after if after else ''))
+            self._capture_ready = True
         except BaseException:
             self.close()
             raise
 
-    def read(self, timeout=0.15):
+    def _read_raw(self, timeout):
         chunks = bytearray()
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -94,37 +105,70 @@ class Terminal:
         self.transcript.extend(chunks)
         return bytes(chunks)
 
+    def read(self, timeout=0.15):
+        chunks = bytes(self.pending)
+        self.pending.clear()
+        return chunks + self._read_raw(timeout)
+
     def send(self, data):
         os.write(self.master, data.encode() if isinstance(data, str) else data)
 
     def wait_for(self, needle, timeout=4):
-        result = bytearray()
         deadline = time.monotonic() + timeout
-        while needle not in result and time.monotonic() < deadline:
-            result.extend(self.read(0.05))
-        if needle not in result:
-            raise AssertionError(f'Missing {needle!r}; terminal: {result!r}')
-        return bytes(result)
+        while True:
+            position = self.pending.find(needle)
+            if position >= 0:
+                end = position + len(needle)
+                result = bytes(self.pending[:end])
+                del self.pending[:end]
+                return result
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            incoming = self._read_raw(min(0.05, remaining))
+            self.pending.extend(incoming)
+            if not incoming and self.process is not None and self.process.poll() is not None:
+                break
+        raise AssertionError(f'Missing {needle!r}; {self.diagnostic()}')
+
+    def diagnostic(self):
+        status = self.process.poll() if self.process is not None else None
+        return f'process status: {status}; terminal: {bytes(self.transcript[-3000:])!r}'
 
     def command(self, command):
-        self.send(command + "; builtin printf '\\n__COMMAND_DONE__\\n'\n")
-        output = self.wait_for(b'\r\n__COMMAND_DONE__\r\n')
+        self._command_number += 1
+        marker = f'__COMMAND_DONE_{self._command_number}__'
+        self.send(command + "; builtin printf '\\n" + marker + "\\n'\n")
+        output = self.wait_for(b'\r\n' + marker.encode() + b'\r\n')
         return output + self.read(0.05)
 
     def state(self):
         self.state_path.unlink(missing_ok=True)
         self.send(b'\x1b[98~')
         deadline = time.monotonic() + 3
-        while not self.state_path.exists() and time.monotonic() < deadline:
-            self.read(0.03)
-        if not self.state_path.exists():
-            raise AssertionError(f'Readline snapshot failed: {bytes(self.transcript[-3000:])!r}')
-        line, point = self.state_path.read_text().splitlines()
-        return line, int(point)
+        terminator = b'\0' + self.SNAPSHOT_DONE + b'\0'
+        while time.monotonic() < deadline:
+            try:
+                raw = self.state_path.read_bytes()
+            except FileNotFoundError:
+                raw = b''
+            if terminator in raw:
+                fields = raw.split(b'\0')
+                if len(fields) != 4 or fields[2] != self.SNAPSHOT_DONE or fields[3] or not fields[1].isdigit():
+                    raise AssertionError(f'Malformed completed Readline snapshot: {raw!r}; {self.diagnostic()}')
+                return fields[0].decode('utf-8', errors='surrogateescape'), int(fields[1])
+            if self.process is not None and self.process.poll() is not None:
+                break
+            self.read(min(0.03, max(0, deadline - time.monotonic())))
+        raise AssertionError(f'Readline snapshot failed: {self.diagnostic()}')
 
     def cancel(self):
         self.send(b'\x03')
         self.wait_for(b'__PTY__> ')
+        if self._capture_ready:
+            snapshot = self.state()
+            if snapshot != ('', 0):
+                raise AssertionError(f'Ctrl-C did not clear the edit buffer: {snapshot!r}; {self.diagnostic()}')
 
     def executions(self):
         if not self.log.exists():
@@ -132,14 +176,104 @@ class Terminal:
         return [json.loads(line) for line in self.log.read_text().splitlines()]
 
     def close(self):
-        if self.process.poll() is None:
-            os.killpg(self.process.pid, signal.SIGTERM)
-            try:
-                self.process.wait(timeout=0.2)
-            except subprocess.TimeoutExpired:
-                os.killpg(self.process.pid, signal.SIGKILL)
-                self.process.wait(timeout=2)
-        os.close(self.master)
+        try:
+            if self.process is not None and self.process.poll() is None:
+                try:
+                    os.killpg(self.process.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+                try:
+                    self.process.wait(timeout=0.2)
+                except subprocess.TimeoutExpired:
+                    try:
+                        os.killpg(self.process.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    self.process.wait(timeout=2)
+        finally:
+            self.process = None
+            for key in ('master', '_slave'):
+                descriptor = getattr(self, key)
+                if descriptor is not None:
+                    setattr(self, key, None)
+                    os.close(descriptor)
+
+
+class HarnessSynchronizationTests(unittest.TestCase):
+    def terminal(self):
+        shell = Terminal.__new__(Terminal)
+        shell.master = 500
+        shell._slave = None
+        shell.pending = bytearray()
+        shell.transcript = bytearray()
+        shell.process = mock.Mock()
+        shell.process.poll.return_value = None
+        return shell
+
+    def test_wait_preserves_a_second_sentinel_from_the_same_read(self):
+        shell = self.terminal()
+        raw = b'prefix<FIRST>between<SECOND>suffix'
+        with mock.patch.object(select, 'select', side_effect=[([500], [], []), ([], [], [])]), \
+                mock.patch.object(os, 'read', return_value=raw) as read:
+            self.assertEqual(shell.wait_for(b'<FIRST>'), b'prefix<FIRST>')
+            self.assertEqual(shell.wait_for(b'<SECOND>'), b'between<SECOND>')
+            self.assertEqual(shell.read(timeout=0), b'suffix')
+        read.assert_called_once()
+        self.assertEqual(shell.transcript, raw)
+
+    def test_snapshot_waits_for_complete_contents_after_file_creation(self):
+        shell = self.terminal()
+        with tempfile.TemporaryDirectory() as directory:
+            shell.state_path = Path(directory) / 'snapshot'
+            shell.send = mock.Mock(side_effect=lambda _: shell.state_path.write_bytes(b'line\0'))
+            complete = b'line\0' + b'4\0' + shell.SNAPSHOT_DONE + b'\0'
+            shell.read = mock.Mock(side_effect=lambda _: shell.state_path.write_bytes(complete))
+            self.assertEqual(shell.state(), ('line', 4))
+            shell.read.assert_called_once()
+
+    def test_completed_snapshot_with_malformed_point_is_rejected(self):
+        shell = self.terminal()
+        with tempfile.TemporaryDirectory() as directory:
+            shell.state_path = Path(directory) / 'snapshot'
+            completed = b'line\0invalid\0' + shell.SNAPSHOT_DONE + b'\0'
+            shell.send = mock.Mock(side_effect=lambda _: shell.state_path.write_bytes(completed))
+            with self.assertRaisesRegex(AssertionError, 'Malformed completed Readline snapshot'):
+                shell.state()
+
+    def test_spawn_failure_closes_both_pty_descriptors(self):
+        with tempfile.TemporaryDirectory() as directory, \
+                mock.patch.object(pty, 'openpty', return_value=(500, 501)), \
+                mock.patch.object(fcntl, 'ioctl'), \
+                mock.patch.object(subprocess, 'Popen', side_effect=OSError('fixture spawn failure')), \
+                mock.patch.object(os, 'close') as close:
+            with self.assertRaisesRegex(OSError, 'fixture spawn failure'):
+                Terminal(directory)
+            self.assertEqual(close.call_args_list, [mock.call(500), mock.call(501)])
+
+    def test_initial_prompt_failure_closes_process_and_pty(self):
+        process = mock.Mock(pid=12345)
+        process.poll.return_value = None
+        with tempfile.TemporaryDirectory() as directory, \
+                mock.patch.object(pty, 'openpty', return_value=(500, 501)), \
+                mock.patch.object(fcntl, 'ioctl'), \
+                mock.patch.object(subprocess, 'Popen', return_value=process), \
+                mock.patch.object(Terminal, 'wait_for', side_effect=AssertionError('missing initial prompt')), \
+                mock.patch.object(os, 'killpg') as kill, \
+                mock.patch.object(os, 'close') as close:
+            with self.assertRaisesRegex(AssertionError, 'missing initial prompt'):
+                Terminal(directory)
+            kill.assert_called_once_with(process.pid, signal.SIGTERM)
+            process.wait.assert_called_once_with(timeout=0.2)
+            self.assertEqual(close.call_args_list, [mock.call(501), mock.call(500)])
+
+    def test_close_is_idempotent(self):
+        shell = self.terminal()
+        shell.process.pid = 12345
+        with mock.patch.object(os, 'killpg') as kill, mock.patch.object(os, 'close') as close:
+            shell.close()
+            shell.close()
+        kill.assert_called_once_with(12345, signal.SIGTERM)
+        close.assert_called_once_with(500)
 
 
 @unittest.skipUnless(BASH, 'Bash is required for the native Readline PTY tests')
@@ -192,7 +326,8 @@ class BashSuggestionTests(unittest.TestCase):
         line = 'fresh-tool --some-option exact-target'
         shell.send(line + '\x1bOP')
         output = shell.wait_for(b'fresh-tool - installed command')
-        self.assertIn(b'No packaged manual metadata', output + shell.read(0.1))
+        output += shell.wait_for(b'No packaged manual metadata')
+        self.assertIn(b'No packaged manual metadata', output)
         self.assertEqual(shell.state(), (line, len(line)))
         self.assertEqual(shell.executions(), [])
         shell.cancel()
@@ -207,10 +342,11 @@ class BashSuggestionTests(unittest.TestCase):
         self.assertEqual(shell.state()[0], 'user-f1')
         shell.cancel()
         shell.command('function private_fixture { ip must-not-run; }; alias fixture_alias="ip must-not-run"')
+        start = len(shell.transcript)
         shell.send('private_fixture\x1b[[A')
-        output = shell.wait_for(b'private_fixture is a shell function.')
-        self.assertNotIn(b'must-not-run', output)
+        shell.wait_for(b'private_fixture is a shell function.')
         self.assertEqual(shell.state()[0], 'private_fixture')
+        self.assertNotIn(b'must-not-run', bytes(shell.transcript[start:]))
         self.assertEqual(shell.executions(), [])
 
     def test_explicit_assistance_discovers_shell_names_and_completion_without_execution(self):
@@ -232,7 +368,8 @@ class BashSuggestionTests(unittest.TestCase):
         line = "ssh --unknown-option 'a | b' | ip 2> output-must-not-exist"
         shell.send(line + '\x1bOP')
         output = shell.wait_for(b'Pipeline/conditional:')
-        self.assertIn(b'Redirection 2>', output + shell.read(0.2))
+        output += shell.wait_for(b'Redirection 2>')
+        self.assertIn(b'Redirection 2>', output)
         self.assertEqual(shell.state()[0], line)
         self.assertEqual(shell.executions(), [])
         self.assertFalse((shell.directory / 'output-must-not-exist').exists())
@@ -240,10 +377,10 @@ class BashSuggestionTests(unittest.TestCase):
     def test_sensitive_arguments_are_not_duplicated_in_suggestion_preview(self):
         shell = self.shell()
         line = 'sshcopyid --password private-value-196'
+        start = len(shell.transcript)
         shell.send(line + '\t')
-        output = shell.read(0.4)
-        self.assertNotIn(b'Suggested:', output)
         self.assertEqual(shell.state()[0], line)
+        self.assertNotIn(b'Suggested:', bytes(shell.transcript[start:]))
         self.assertEqual(shell.executions(), [])
 
     def test_explicit_assistance_available_when_suggestions_disabled(self):
@@ -276,11 +413,13 @@ class BashSuggestionTests(unittest.TestCase):
 
     def test_incomplete_target_is_feedback_only(self):
         shell = self.shell()
+        start = len(shell.transcript)
         shell.send('change password\t')
-        feedback = shell.read(0.5)
+        shell.wait_for(b'Whose password? Specify the exact username')
+        self.assertEqual(shell.state()[0], 'change password')
+        feedback = bytes(shell.transcript[start:])
         self.assertNotIn(b'Suggested:', feedback)
         self.assertIn(b'user', feedback.lower())
-        self.assertEqual(shell.state()[0], 'change password')
         self.assertEqual(shell.executions(), [])
 
     def test_history_and_stale_preview_preserve_native_behavior(self):
@@ -300,7 +439,6 @@ class BashSuggestionTests(unittest.TestCase):
         shell = self.shell()
         shell.send("cy search 'two words'\t")
         # The valid command remains ordinary completion with its quotes intact.
-        shell.read(0.3)
         self.assertEqual(shell.state()[0], "cy search 'two words'")
         shell.cancel()
         shell.send("cy serach 'two words'\t")
@@ -332,8 +470,10 @@ class BashSuggestionTests(unittest.TestCase):
         shell.send('change na\t')
         self.assertEqual(shell.state()[0], 'change user-result ')
         shell.cancel()
+        start = len(shell.transcript)
         shell.send("'change' na\t")
-        self.assertNotIn(b'Suggested:', shell.read(0.2))
+        shell.state()
+        self.assertNotIn(b'Suggested:', bytes(shell.transcript[start:]))
 
     def test_source_guard_and_later_custom_binding_are_preserved(self):
         shell = self.shell()

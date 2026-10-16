@@ -68,10 +68,44 @@ case $(builtin bind -v 2>/dev/null) in
 esac
 [[ -x /usr/local/libexec/kythos-command-suggest ]] || return 0
 
+# Readline metadata is constant during the two initialization phases. Reading
+# all three binding classes once per phase avoids spawning a new subshell for
+# every absent/private key, which is especially expensive under emulation.
+# Outside initialization, binding inspection always reads the current state so
+# a user's later changes still win when the integration is disabled.
+__kythos_binding_snapshot() {
+    local type definition key
+    __kythos_binding_cached_type=() __kythos_binding_cached_definition=()
+    for type in p s X; do
+        while IFS= read -r definition; do
+            [[ $definition == \"*\":\ * ]] || continue
+            key=${definition%%\": *}
+            key=${key#\"}
+            __kythos_binding_cached_type["$key"]=$type
+            __kythos_binding_cached_definition["$key"]=$definition
+        done < <(builtin bind -m emacs-standard -"$type" 2>/dev/null)
+    done
+    __kythos_binding_cached=1
+}
+
+__kythos_binding_snapshot_clear() {
+    unset __kythos_binding_cached_type __kythos_binding_cached_definition __kythos_binding_cached
+    unset -f __kythos_binding_snapshot __kythos_binding_snapshot_clear
+}
+
+declare -A __kythos_binding_cached_type=() __kythos_binding_cached_definition=()
+__kythos_binding_snapshot
+
 # Return a complete Readline definition without evaluating its contents.
 __kythos_binding() {
     local key=$1 type definition
     __kythos_binding_type= __kythos_binding_definition=
+    if [[ ${__kythos_binding_cached:-0} == 1 ]]; then
+        __kythos_binding_type=${__kythos_binding_cached_type[$key]-}
+        __kythos_binding_definition=${__kythos_binding_cached_definition[$key]-}
+        [[ -n $__kythos_binding_type ]]
+        return
+    fi
     for type in p s X; do
         while IFS= read -r definition; do
             if [[ $definition == \""$key"\":\ * ]]; then
@@ -87,6 +121,7 @@ __kythos_binding() {
 # Do not replace custom Tab macros, shell callbacks, or reserved private keys.
 __kythos_binding '\C-i'
 if [[ $__kythos_binding_type != p || $__kythos_binding_definition != *': complete' ]]; then
+    __kythos_binding_snapshot_clear
     unset -f __kythos_binding
     unset __kythos_binding_type __kythos_binding_definition
     return 0
@@ -101,6 +136,7 @@ for __kythos_suggestions_key in '\e[99;1~' '\e[99;2~' '\e[99;3~' '\e[99;4~'; do
     fi
 done
 if (( __kythos_suggestions_collision )); then
+    __kythos_binding_snapshot_clear
     unset -f __kythos_binding
     unset __kythos_binding_type __kythos_binding_definition __kythos_suggestions_key
     unset __kythos_suggestions_collision __kythos_suggestions_keys
@@ -324,10 +360,14 @@ for __kythos_suggestions_key in "${__kythos_suggestions_help_keys[@]}"; do
 done
 for __kythos_suggestions_key in "${__kythos_suggestions_keys[@]}"; do
     __kythos_suggestions_macro "$__kythos_suggestions_key"
+done
+__kythos_binding_snapshot
+for __kythos_suggestions_key in "${__kythos_suggestions_keys[@]}"; do
     __kythos_binding "$__kythos_suggestions_key" || :
     __kythos_suggestions_owned_type["$__kythos_suggestions_key"]=$__kythos_binding_type
     __kythos_suggestions_owned["$__kythos_suggestions_key"]=$__kythos_binding_definition
 done
+__kythos_binding_snapshot_clear
 __kythos_suggestions_clear
 __kythos_suggestions_loaded=1
 export -n __kythos_suggestions_loaded

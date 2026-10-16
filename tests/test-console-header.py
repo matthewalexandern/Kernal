@@ -331,7 +331,7 @@ class NativeViewport(unittest.TestCase):
             os.setsid()
             fcntl.ioctl(0, termios.TIOCSCTTY, 0)
 
-        self.process = subprocess.Popen(['/usr/bin/python3', '-I', str(script)], stdin=self.slave,
+        self.process = subprocess.Popen(['/usr/bin/python3', '-I', '-B', str(script)], stdin=self.slave,
                                         stdout=self.slave, stderr=self.slave, env=self.environment,
                                         preexec_fn=controlling_pty, close_fds=True)
         self.addCleanup(self.stop)
@@ -489,8 +489,13 @@ class NativeViewport(unittest.TestCase):
             self.wait_for(lambda: b'RAW> ' in self.stream)
             self.assertEqual(list(self.work.glob('kythos-console-*')), [])
             self.stream.clear()
-            os.write(self.master, b"printf '__RAW_TTY__'; /usr/bin/tty; printf '__RAW_ENV__%s|%s\\n' \"$KYTHOS_CONSOLE_HEADER\" \"${TMUX-unset}\"; printf '__RAW_UID__'; id -u\n")
-            self.wait_for(lambda: b'__RAW_ENV__0|unset' in self.stream)
+            os.write(self.master, b"printf '__RAW_TTY__'; /usr/bin/tty; printf '__RAW_ENV__%s|%s\\n' \"$KYTHOS_CONSOLE_HEADER\" \"${TMUX-unset}\"; printf '__RAW_UID__'; id -u; printf '\\n__RAW_COMMAND_DONE__\\n'\n")
+            # The environment and UID prefix can arrive before the external
+            # id process writes its value, especially under ARM64 emulation.
+            # Wait for the completed output, not an earlier command's prefix.
+            # Newlines prevent the echoed printf command matching the marker.
+            self.wait_for(lambda: b'\r\n__RAW_COMMAND_DONE__\r\n' in self.stream)
+            self.assertIn(b'__RAW_ENV__0|unset', self.stream)
             self.assertIn(('__RAW_TTY__' + original_tty).encode(), self.stream)
             self.assertIn(('__RAW_UID__' + str(os.getuid())).encode(), self.stream)
             self.stream.clear()
