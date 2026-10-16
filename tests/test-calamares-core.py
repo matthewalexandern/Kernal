@@ -195,35 +195,40 @@ class TargetTests(unittest.TestCase):
                 return {key: variant_roundtrip(item) for key, item in value.items()}
             return value
 
-        for encrypted in (False, True):
-            with self.subTest(encrypted=encrypted), tempfile.TemporaryDirectory() as temporary:
-                root = {"mountPoint": "/", "fs": "ext4", "claimed": True}
-                if encrypted:
-                    root.update(luksMapperName="luks-root", luksUuid="8bba8ee0-153f-4d65-af3c-96d701ba76df")
-                partitions = [{"mountPoint": "/boot", "fs": "ext4", "claimed": True}, root]
-                topology = variant_roundtrip(dict(storage.topology(partitions, "bios"), swap="file"))
-                values = {"rootMountPoint": temporary, "kythosStorage": topology,
-                          "username": "tester", "autoLoginUser": None,
-                          "bootLoader": {"installPath": "/dev/vda"}}
-                receipts = []
+        firmwares = ("efi", "bios") if target.ARCHITECTURE["bios_target"] else ("efi",)
+        for firmware in firmwares:
+            for encrypted in (False, True):
+                with self.subTest(firmware=firmware, encrypted=encrypted), tempfile.TemporaryDirectory() as temporary:
+                    root = {"mountPoint": "/", "fs": "ext4", "claimed": True}
+                    if encrypted:
+                        root.update(luksMapperName="luks-root", luksUuid="8bba8ee0-153f-4d65-af3c-96d701ba76df")
+                    partitions = [{"mountPoint": "/boot", "fs": "ext4", "claimed": True}, root]
+                    if firmware == "efi":
+                        partitions.insert(0, {"mountPoint": "/boot/efi", "fs": "fat32", "claimed": True})
+                    topology = variant_roundtrip(dict(storage.topology(partitions, firmware), swap="file"))
+                    values = {"rootMountPoint": temporary, "kythosStorage": topology,
+                              "username": "tester", "autoLoginUser": None,
+                              "bootLoader": {"installPath": "/dev/vda"}}
+                    receipts = []
 
-                def target_call(arguments):
-                    self.assertEqual(arguments, ["/usr/local/libexec/kythos-calamares-target", "configure"])
-                    metadata = types.SimpleNamespace(st_mode=stat.S_IFREG | 0o600, st_uid=0)
-                    with patch.object(target, "STATE_DIR", Path(temporary) / "var/lib/kythos"), \
-                            patch.object(Path, "lstat", return_value=metadata):
-                        receipts.append(target.read_topology())
+                    def target_call(arguments):
+                        self.assertEqual(arguments, ["/usr/local/libexec/kythos-calamares-target", "configure"])
+                        metadata = types.SimpleNamespace(st_mode=stat.S_IFREG | 0o600, st_uid=0)
+                        with patch.object(target, "STATE_DIR", Path(temporary) / "var/lib/kythos"), \
+                                patch.object(Path, "lstat", return_value=metadata):
+                            receipts.append(target.read_topology())
 
-                api = types.SimpleNamespace(globalstorage=types.SimpleNamespace(value=values.get),
-                                            utils=types.SimpleNamespace(check_target_env_call=target_call))
-                with patch.object(stage, "libcalamares", api):
-                    self.assertIsNone(stage.run())
-                self.assertEqual(len(receipts), 1)
-                self.assertIs(receipts[0]["encrypted"], encrypted)
-                self.assertIs(receipts[0]["root_requires_crypto"], encrypted)
-                if encrypted:
-                    self.assertIs(receipts[0]["crypt_mappings"][0]["early"], True)
-                self.assertEqual(type(topology["encrypted"]), int)  # GS was not mutated.
+                    api = types.SimpleNamespace(globalstorage=types.SimpleNamespace(value=values.get),
+                                                utils=types.SimpleNamespace(check_target_env_call=target_call))
+                    with patch.object(stage, "libcalamares", api):
+                        self.assertIsNone(stage.run())
+                    self.assertEqual(len(receipts), 1)
+                    self.assertEqual(receipts[0]["firmware"], firmware)
+                    self.assertIs(receipts[0]["encrypted"], encrypted)
+                    self.assertIs(receipts[0]["root_requires_crypto"], encrypted)
+                    if encrypted:
+                        self.assertIs(receipts[0]["crypt_mappings"][0]["early"], True)
+                    self.assertEqual(type(topology["encrypted"]), int)  # GS was not mutated.
 
     def test_receipt_boolean_normalization_rejects_other_values(self):
         for value in (None, "true", "0", 2, -1, [], {}, 0.0, 1.0):
