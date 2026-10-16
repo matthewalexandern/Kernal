@@ -116,8 +116,9 @@ def read_topology():
 def protected_package(name):
     name = name.split(":", 1)[0]
     return (name in REQUIRED_PACKAGES or
-            name.startswith(("linux-image-", "linux-headers-", "firmware-", "grub-", "shim-", "libpython3")) or
-            re.fullmatch(r"python3(?:\.\d+)?(?:-minimal|-apt|-lib2to3)?", name) is not None)
+            name.startswith(("linux-image-", "linux-headers-", "firmware-", "grub-", "shim-")) or
+            re.fullmatch(r"python3(?:\.\d+)?(?:-minimal|-apt|-lib2to3)?", name) is not None or
+            re.fullmatch(r"libpython3(?:\.\d+)?-(?:minimal|stdlib)", name) is not None)
 
 
 def manifest_packages(path=MANIFEST):

@@ -78,6 +78,11 @@ manifest.chmod(0o644)
 print('Fixed live-only removal manifest:', len(removed), 'packages')
 PY
 
+# Exercise the same admission policy that the target finalizer will use. A
+# disagreement between APT's resolved plan and target safeguards fails here,
+# before distributing an ISO that could partition a disk and then stop.
+python3 -c "import runpy; runpy.run_path('/usr/local/libexec/kythos-calamares-target')['manifest_packages']()"
+
 # These entry points are available only to the temporary live account.
 chown root:root /etc/sudoers.d/kythos-live-installer
 chmod 0440 /etc/sudoers.d/kythos-live-installer

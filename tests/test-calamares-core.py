@@ -176,6 +176,16 @@ class TargetTests(unittest.TestCase):
         self.assertEqual(target.removal_plan_packages("Purg calamares [3.3.14]\nRemv openbox [3.6]\n"),
                          ["calamares", "openbox"])
 
+    def test_python_embedding_library_can_be_removed_but_runtime_cannot(self):
+        for package in ("libpython3.13", "libpython3.13:amd64"):
+            self.assertFalse(target.protected_package(package), package)
+            self.assertEqual(target.removal_plan_packages("Purg " + package + " [3.13]\n"), [package])
+        for package in ("libpython3-stdlib", "libpython3.13-stdlib", "libpython3.13-minimal",
+                        "libpython3.13-minimal:amd64", "python3-minimal", "python3.13-minimal"):
+            self.assertTrue(target.protected_package(package), package)
+            with self.assertRaises(ValueError):
+                target.removal_plan_packages("Purg " + package + " [3.13]\n")
+
     def test_local_automatic_login_is_optional_and_off_by_default(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "getty@tty1.service.d/autologin.conf"
