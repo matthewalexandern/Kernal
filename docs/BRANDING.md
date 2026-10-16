@@ -19,6 +19,27 @@ installer and installed-system identity questions are changed. Question keys,
 defaults, machine-readable choices, substitutions, URLs, package indexes, and
 archive descriptions retain their upstream meaning. The overlay source and
 filter accompany the source ISO.
+The optional debug-log web page also receives KythOS Kernal headings while
+retaining its upstream paths and serving behavior.
+
+The installer offers `kythos` as an editable default hostname. A hostname cannot
+contain the spaces in the full display name. Network-provided hostnames and a
+user-entered hostname retain their normal meaning.
+
+The login header prints the running kernel type, release, and architecture
+without the compiler/vendor string from `uname -v`. The kernel binary and
+the complete output of `uname` remain untouched. `/etc/update-motd.d/10-uname`
+is a `base-files` conffile; the image supplies a local modification using the
+normal dpkg configuration mechanism. Ordinary package upgrades retain it;
+an administrator can deliberately select the package maintainer version or
+use `--force-confnew` to replace local configuration. Source validation checks
+that the Debian builder still provides this conffile guarantee.
+
+The display filter also covers product references that appear only in upstream
+translations, including reviewed inflections such as `Debianu` and `Debianiin`.
+Archive selection and update-service explanations continue to identify the
+actual upstream provider. The filter does not rename the upstream archive as
+if it were a KythOS service.
 
 The OS release files are locally diverted through dpkg so a base-files upgrade
 delivers its upstream identity to the `.distrib` paths and preserves the KythOS

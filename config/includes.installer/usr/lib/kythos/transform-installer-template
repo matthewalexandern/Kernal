@@ -22,16 +22,33 @@ function carries_kythos_identity(name) {
         || name == "cdrom-checker/askmount" \
         || name == "cdrom-checker/wrongcd" \
         || name == "cdrom-checker/firstcd" \
+        || name == "cdrom/suite" \
+        || name == "apt-setup/local/key-error" \
+        || name == "grub-installer/only_debian" \
         || name == "grub-installer/with_other_os" \
         || name == "grub-installer/update-nvram" \
+        || name == "netcfg/use_autoconfig" \
+        || name == "netcfg/choose_interface" \
+        || name == "netcfg/no_default_route" \
         || name == "network-console/login" \
         || name == "network-console/password" \
+        || name == "nobootloader/confirmation_powerpc_chrp_pegasos" \
+        || name == "nobootloader/confirmation_powerpc_pasemi" \
+        || name == "partman-auto/help" \
+        || name == "partman-auto/init_automatically_partition" \
+        || name == "partman/confirm_nochanges" \
         || name == "partman-crypto/tools_missing" \
-        || name == "partman-efi/non_efi_system"
+        || name == "partman-efi/non_efi_system" \
+        || name == "partman-target/help" \
+        || name == "partman-target/arch_help/i386/generic" \
+        || name == "partman-target/arch_help/powerpc/powermac_newworld" \
+        || name == "passwd/make-user"
 }
 
 function identifier_character(character) {
-    return character ~ /^[[:alnum:]_]$/
+    # Machine identifiers use ASCII; adjacent Chinese/Japanese/Korean prose
+    # must not be mistaken for part of an identifier containing the old name.
+    return character ~ /^[A-Za-z0-9_]$/
 }
 
 function protected_token(value, position, width, start, finish, token, lower) {
@@ -53,31 +70,67 @@ function protected_token(value, position, width, start, finish, token, lower) {
         || token ~ /[[:alnum:]-]+\.[[:alnum:]-]+/
 }
 
-function replace_identity(value, result, position, width, fragment, before, after) {
+# Reviewed Latin inflections in the shipped installer translations. Removing
+# the grammatical suffix keeps the product name itself exactly KythOS Kernal.
+# Unknown identifiers remain protected rather than guessing at their meaning.
+function inflection_width(value, position, tail, suffix) {
+    tail = substr(value, position)
+    if (substr(tail, 1, length("ê")) == "ê" \
+        && !identifier_character(substr(tail, length("ê") + 1, 1)))
+        return length("ê")
+    if (!match(tail, /^[A-Za-z]+/))
+        return 0
+    suffix = tolower(substr(tail, 1, RLENGTH))
+    if (suffix ~ /^(a|aj|an|em|i|in|iin|o|on|ov|ovih|ovog|ovom|s|u)$/)
+        return RLENGTH
+    return 0
+}
+
+function replace_identity(value, result, position, width, fragment, before, after, suffix, separator, installer) {
     result = ""
     position = 1
     while (position <= length(value)) {
         width = 0
+        installer = 0
         fragment = tolower(substr(value, position, 16))
         if (fragment == "debian-installer" \
-            || fragment == "debian installer")
+            || fragment == "debian installer") {
             width = 16
-        else if (tolower(substr(value, position, 6)) == "debian")
+            installer = 1
+        } else if (tolower(substr(value, position, 6)) == "debian")
             width = 6
 
         if (width) {
             before = position > 1 ? substr(value, position - 1, 1) : ""
+            suffix = inflection_width(value, position + width)
+            separator = ""
+            # Swedish translations join the old name to the noun system.
+            # Keep that noun readable without joining it to our product name.
+            if (tolower(substr(value, position + width)) \
+                ~ /^system(et)?([^A-Za-z0-9_]|$)/)
+                separator = " "
+            width += suffix
             after = substr(value, position + width, 1)
-            if (identifier_character(before) || identifier_character(after) \
+            # Some translated words begin like English installer (for example
+            # Swedish installeras and Norwegian installeringsmediet). In that
+            # case replace just the product name and leave the local noun.
+            if (installer && identifier_character(after) && separator == "") {
+                width = 6 + inflection_width(value, position + 6)
+                installer = 0
+                after = substr(value, position + width, 1)
+            }
+            if (identifier_character(before) \
+                || (identifier_character(after) && separator == "") \
                 || protected_token(value, position, width))
                 width = 0
         }
 
         if (width) {
-            if (width == 16)
+            if (installer)
                 result = result "KythOS Kernal installer"
             else
                 result = result "KythOS Kernal"
+            result = result separator
             position += width
         } else {
             result = result substr(value, position, 1)

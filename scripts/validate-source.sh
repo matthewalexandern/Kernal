@@ -26,6 +26,7 @@ for script in \
     "$repo_root/tests/test-recovery-topology.sh" \
     "$repo_root/tests/test-tpm2-pcrread-parser.sh" \
     "$repo_root/tests/test-installer-branding.sh" \
+    "$repo_root/tests/test-login-branding.sh" \
     "$repo_root/config/hooks/live/005-add-grub2-source.hook.source" \
     "$repo_root/config/hooks/live/010-enable-security.hook.chroot" \
     "$repo_root/config/hooks/live/015-prepare-compliance.hook.chroot" \
@@ -37,6 +38,7 @@ for script in \
     "$repo_root/config/includes.installer/usr/lib/kythos/transform-installer-template" \
     "$repo_root/config/hooks/live/090-record-manifest.hook.chroot" \
     "$repo_root/config/includes.chroot/usr/local/bin/cy" \
+    "$repo_root/config/includes.chroot/etc/update-motd.d/10-uname" \
     "$repo_root/config/includes.chroot/usr/local/libexec/kythos-aide-initialize" \
     "$repo_root/config/includes.chroot/usr/local/libexec/kythos-refresh-fips-config" \
     "$repo_root/config/includes.chroot/usr/local/sbin/kythos-enroll-tpm2" \
@@ -250,6 +252,8 @@ check_contains "$access_packages" 'clevis-initramfs'
 check_contains "$access_packages" 'clevis-tpm2'
 
 installer_preseed="$repo_root/config/includes.installer/preseed.cfg"
+check_contains "$installer_preseed" 'd-i netcfg/get_hostname string kythos'
+check_contains "$installer_preseed" 'd-i netcfg/get_hostname seen false'
 check_contains "$installer_preseed" 'd-i passwd/root-login boolean false'
 check_contains "$installer_preseed" 'd-i user-setup/allow-password-weak boolean true'
 installer_release="$repo_root/config/includes.installer/etc/lsb-release"
@@ -261,6 +265,8 @@ check_contains "$repo_root/config/includes.installer/usr/lib/debian-installer-st
     'ln -sfn "$wrapper" /usr/bin/debconf-loadtemplate'
 "$repo_root/tests/test-installer-branding.sh" \
     || fail 'installer identity transform tests failed'
+"$repo_root/tests/test-login-branding.sh" \
+    || fail 'login identity presentation tests failed'
 
 ssh_config="$repo_root/config/includes.chroot/etc/ssh/sshd_config.d/10-kythos-authentication.conf"
 check_contains "$ssh_config" 'PasswordAuthentication yes'
@@ -484,6 +490,11 @@ if test -r /etc/os-release; then
     # shellcheck disable=SC1091
     . /etc/os-release
     if test "${ID:-}" = debian && test "${VERSION_CODENAME:-}" = trixie; then
+        # This header is a normal local conffile modification, so dpkg keeps
+        # it on ordinary upgrades rather than replacing it as package data.
+        dpkg-query -W -f='${Conffiles}\n' base-files \
+            | grep -Eq '^ /etc/update-motd.d/10-uname[[:space:]]' \
+            || fail 'base-files login header no longer has conffile protection'
         while IFS= read -r package
         do
             apt-cache show "$package" >/dev/null 2>&1 \

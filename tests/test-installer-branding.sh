@@ -43,6 +43,31 @@ Type: select
 Choices-C: debian, kythos
 Choices: Debian, KythOS Kernal
 Description: Keep machine-readable choices unchanged
+
+Template: cdrom/suite
+Type: select
+Choices-C: trixie
+Default: trixie
+Description: Debian version to install
+
+Template: grub-installer/only_debian
+Type: boolean
+Default: true
+Description: Install the bootloader?
+Description-de.UTF-8: Diese Installation von Debian ist das einzige Betriebssystem.
+
+Template: network-console/login
+Type: note
+Description-cs.UTF-8: instalace Debianu, s Debianem a debian-installeru
+Description-fi.UTF-8: Debianiin, Debianin
+Description-ku.UTF-8: Debianê
+Description-de.UTF-8: Debian-Installers
+Description-sv.UTF-8: Debiansystemet
+ Keep DebianIdentifier, DebianSystemIdentifier, Debian_Identifier, boot_debian, and ${DEBIAN_VENDOR}.
+Description-nn.UTF-8: Set inn Debian-installeringsmediet
+Description-sv.UTF-8: medan Debian installeras.
+Description-zh_TW.UTF-8: 更新NVRAM變數以自動啟動到Debian？
+Description-ko.UTF-8: debian-installer는
 EOF
 
 "$filter" "$work/input.templates" "$work/output.templates"
@@ -70,6 +95,40 @@ grep -Fq ' Please enter the mirror from which Debian will be downloaded.' \
     "$work/output.templates"
 grep -Fq 'Choices-C: debian, kythos' "$work/output.templates"
 grep -Fq 'Choices: Debian, KythOS Kernal' "$work/output.templates"
+grep -Fxq 'Description: KythOS Kernal version to install' "$work/output.templates"
+grep -Fxq 'Choices-C: trixie' "$work/output.templates"
+grep -Fxq 'Default: trixie' "$work/output.templates"
+grep -Fxq 'Description-de.UTF-8: Diese Installation von KythOS Kernal ist das einzige Betriebssystem.' \
+    "$work/output.templates"
+grep -Fxq 'Description-cs.UTF-8: instalace KythOS Kernal, s KythOS Kernal a KythOS Kernal installer' \
+    "$work/output.templates"
+grep -Fxq 'Description-fi.UTF-8: KythOS Kernal, KythOS Kernal' "$work/output.templates"
+grep -Fxq 'Description-ku.UTF-8: KythOS Kernal' "$work/output.templates"
+grep -Fxq 'Description-de.UTF-8: KythOS Kernal installer' "$work/output.templates"
+grep -Fxq 'Description-sv.UTF-8: KythOS Kernal systemet' "$work/output.templates"
+grep -Fxq 'Description-nn.UTF-8: Set inn KythOS Kernal-installeringsmediet' \
+    "$work/output.templates"
+grep -Fxq 'Description-sv.UTF-8: medan KythOS Kernal installeras.' \
+    "$work/output.templates"
+grep -Fxq 'Description-zh_TW.UTF-8: 更新NVRAM變數以自動啟動到KythOS Kernal？' \
+    "$work/output.templates"
+grep -Fxq 'Description-ko.UTF-8: KythOS Kernal installer는' "$work/output.templates"
+grep -Fq ' Keep DebianIdentifier, DebianSystemIdentifier, Debian_Identifier, boot_debian, and ${DEBIAN_VENDOR}.' \
+    "$work/output.templates"
+
+# Repeated template loads must not duplicate the product name or alter fields.
+"$filter" "$work/output.templates" "$work/output-again.templates"
+cmp "$work/output.templates" "$work/output-again.templates"
+
+# Set only an editable fallback, not netcfg/hostname which forces the value
+# over a network-provided name. The installer must still show the prompt.
+preseed="$repo_root/config/includes.installer/preseed.cfg"
+grep -Fxq 'd-i netcfg/get_hostname string kythos' "$preseed"
+grep -Fxq 'd-i netcfg/get_hostname seen false' "$preseed"
+if grep -Eq '^d-i netcfg/hostname[[:space:]]' "$preseed"; then
+    printf '%s\n' 'installer hostname must remain editable' >&2
+    exit 1
+fi
 
 # Exercise the wrapper with a stand-in native loader. The loader receives the
 # original arguments and its status is returned without translation.
@@ -105,5 +164,26 @@ KYTHOS_TEST_ARGUMENTS="$work/error-arguments" KYTHOS_TEST_STATUS=37 \
 status=$?
 set -e
 test "$status" -eq 37
+
+# Execute the startup hook in an isolated path fixture. The optional log page
+# changes its two headings while keeping machine paths and source URLs intact.
+mkdir -p "$work/startup/usr/bin"
+cat > "$work/startup/usr/bin/httpd" <<'EOF'
+#!/bin/sh
+echo "<title>Debian-installer logs and screenshots</title>"
+echo "<b>Debian-installer logs and screenshots</b>"
+echo "/var/log/debian-installer https://www.debian.org/"
+EOF
+sed \
+    -e "s#/usr/lib/cdebconf/debconf-loadtemplate#$work/bin/native#g" \
+    -e "s#/usr/lib/kythos/debconf-loadtemplate#$work/bin/wrapper#g" \
+    -e "s#/usr/bin/debconf-loadtemplate#$work/startup/usr/bin/debconf-loadtemplate#g" \
+    -e "s#/usr/bin/httpd#$work/startup/usr/bin/httpd#g" \
+    "$startup" > "$work/bin/startup"
+sh "$work/bin/startup"
+test "$(readlink "$work/startup/usr/bin/debconf-loadtemplate")" = "$work/bin/wrapper"
+test "$(grep -Fc 'KythOS Kernal installer logs and screenshots' "$work/startup/usr/bin/httpd")" -eq 2
+grep -Fxq 'echo "/var/log/debian-installer https://www.debian.org/"' \
+    "$work/startup/usr/bin/httpd"
 
 printf '%s\n' 'installer branding transform tests passed'

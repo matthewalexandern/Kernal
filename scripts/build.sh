@@ -188,7 +188,9 @@ required_source_recipe_files=(
     config/includes.installer/usr/lib/debian-installer-startup.d/S19kythos-branding
     config/includes.installer/usr/lib/kythos/debconf-loadtemplate
     config/includes.installer/usr/lib/kythos/transform-installer-template
+    config/includes.chroot/etc/update-motd.d/10-uname
     tests/test-installer-branding.sh
+    tests/test-login-branding.sh
 )
 for required_source_recipe_file in "${required_source_recipe_files[@]}"
 do
@@ -203,7 +205,7 @@ for required_source_recipe_file in "${required_source_recipe_files[@]}"
 do
     source_recipe_mode=0644
     case "$required_source_recipe_file" in
-        scripts/render-branding.py|tests/*.sh|*/S19kythos-branding|*/debconf-loadtemplate|*/transform-installer-template)
+        scripts/render-branding.py|tests/*.sh|*/S19kythos-branding|*/debconf-loadtemplate|*/transform-installer-template|*/update-motd.d/10-uname)
             source_recipe_mode=0755 ;;
     esac
     install -d -o root -g root -m 0755 \

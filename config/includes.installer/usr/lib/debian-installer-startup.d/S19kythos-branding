@@ -11,3 +11,11 @@ test -x "$wrapper"
 # that symlink before S20templates runs, leaving the upstream native executable
 # available for the wrapper and covering templates installed later by udpkg.
 ln -sfn "$wrapper" /usr/bin/debconf-loadtemplate
+
+# The optional debug-log web page has two headings outside debconf templates.
+# Change only those presentation strings; its paths, links, and logic stay as
+# provided by the upstream installer.
+if test -f /usr/bin/httpd; then
+    sed -i 's/Debian-installer logs and screenshots/KythOS Kernal installer logs and screenshots/g' \
+        /usr/bin/httpd
+fi

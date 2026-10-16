@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+
+# Show the running kernel release and architecture without its compiler banner.
+# Full, unmodified build provenance remains available through uname -v.
+printf 'Kernel: %s %s (%s)\n' "$(uname -s)" "$(uname -r)" "$(uname -m)"
