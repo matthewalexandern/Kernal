@@ -3,8 +3,10 @@
 ## Supported builder
 
 Use a clean Debian 13 amd64 environment. The builder needs root inside that
-environment because live-build creates chroots and mounts filesystems. Do not
-run the Ubuntu host's older live-build package against this recipe.
+environment because live-build creates chroots and mounts filesystems. Install
+`python3-pil` as well as the live-build prerequisites because source validation
+re-renders the checked-in branding in memory. Do not run the Ubuntu host's
+older live-build package against this recipe.
 
 For an isolated build on the current workstation, use a disposable QEMU/KVM
 guest installed from an official, signature-verified Debian 13 netinst ISO.
@@ -124,3 +126,19 @@ The distinct dpkg vendor inherits from Debian; signed Debian repository Origin,
 package copyright, and compatibility identifiers remain intact as provenance.
 The KythOS MIT license is included at both ISO roots and in the installed
 system.
+
+## Regenerating boot artwork
+
+The release images already contain checked-in boot artwork. Pillow is used by
+source validation and does not enter the live filesystem. When intentionally
+updating the approved source mark, regenerate every derived image in one pass:
+
+```sh
+sudo apt install python3-pil
+python3 scripts/render-branding.py
+./scripts/validate-source.sh
+```
+
+The renderer never adds a product wordmark. Plymouth draws the trace, light
+sweep, breathing glow, and handoff fade from the transparent logo. Its prompt
+callbacks remain visible for encrypted-root passphrases and boot questions.

@@ -1,40 +1,37 @@
 # KythOS boot artwork source
 
-The source PNG in this directory was generated with OpenAI's built-in image
-generation tool. Exact product text is applied deterministically when deriving
-the bootloader and Plymouth images, so the displayed name is always
-`KythOS Kernal`.
+The approved source is `kythos-mark-cyan-source.png`: a cyan KythOS mark on a
+transparent canvas. It contains no wordmark or other text. The user supplied
+the mark as a cyan-on-black reference, and OpenAI's built-in image generation
+tool was used to isolate it from the black background while preserving its
+shape, cyan color, and soft outer glow.
 
-## Prompt
+## Image edit direction
 
-> Create a refined, security-focused abstract boot background for a minimal
-> operating system named KythOS Kernal. Use a deep near-black navy background
-> with a restrained central geometric shield made from interlocking luminous
-> lines, suggesting kernel rings and trusted computing. Use crisp,
-> vector-friendly geometry with a calm, understated cyan and muted-violet
-> glow. Make it a 16:9 wide canvas with generous clear space. Include no text,
-> existing brand logos, watermark, people, scenery, busy circuitry, or padlock
-> imagery.
+> Extract the cyan KythOS symbol from the supplied reference as a clean,
+> transparent PNG. Preserve the complete hand-drawn mark, its proportions,
+> rounded strokes, bright cyan fill, and restrained cyan edge glow. Remove the
+> black background and all surrounding content. Add no letters, words,
+> watermark, frame, or new symbol.
 
-Generated source SHA-256:
-`3dc68b22cce543b494bd97ef334e70a712f6d46a5be1cbc7cb63699063add25f`.
+Approved transparent source SHA-256:
+`0bf8e10c25b3880d43adcb997474ae2e1cf6d5fd6fb638ce3c4316efb95a6157`.
 
-## Installer banner source
+## Deterministic derivatives
 
-`kythos-installer-banner-source.png` was generated from the boot artwork with
-the following image-edit prompt, then reduced to the Debian Installer's exact
-800 by 75 pixel RGB banner format. The final banner keeps its emblem and title
-in the central area because the low-resolution GTK installer can crop its
-edges.
+Run the renderer from the repository root after intentionally replacing the
+approved transparent source:
 
-> Create an ultra-wide operating-system installer header banner derived from
-> this KythOS shield artwork. Dark navy-to-black background, subtle cyan and
-> violet glow, crisp clean professional security-focused design. Use the same
-> shield symbol as a small emblem and include the exact title text "KythOS
-> Kernal" in a highly legible modern sans-serif. Compose all vital emblem and
-> title content inside the central 60 percent so it remains visible if either
-> side is cropped. No Debian logo, no extra words, no version number, no
-> mockup, no frame. Target aspect ratio 800:75 (very wide and short).
+```sh
+python3 scripts/render-branding.py
+```
 
-Generated installer source SHA-256:
-`0b0342e5bbf4d590c9c775f8f87a922e63a2ae75a9c68537e5ac62b8a27e4947`.
+The renderer produces the checked-in Plymouth logo and static background,
+BIOS and UEFI menu artwork, and both Debian Installer header variants. It does
+not add text. The exact `logo_debian.png` filenames are required by the Debian
+Installer overlay interface; the images themselves contain only KythOS art.
+
+The Plymouth script animates the transparent mark with a staged reveal, a
+diagonal light pass, a restrained breathing glow, and a short handoff fade.
+Password, question, and boot-status text remain separate functional overlays
+so encrypted systems stay usable.

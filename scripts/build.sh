@@ -166,10 +166,59 @@ install -o root -g root -m 0755 \
     "$repo_root/scripts/audit-source-coverage.sh" \
     "$build_root/audit-source-coverage.sh"
 
+# Keep the editable branding inputs beside the live-build recipe in the source
+# ISO.  The checked-in PNGs under config/ are rendered outputs; these files are
+# the canonical art, its provenance, the deterministic renderer, and the
+# license needed to reproduce those outputs.
+source_recipe_root="$build_root/config/includes.source/kythos-recipe"
+required_source_recipe_files=(
+    assets/branding/IMAGEGEN-PROMPT.md
+    assets/branding/kythos-boot-source.png
+    assets/branding/kythos-installer-banner-source.png
+    assets/branding/kythos-mark-cyan-source.png
+    scripts/render-branding.py
+    LICENSE
+)
+for required_source_recipe_file in "${required_source_recipe_files[@]}"
+do
+    [[ -f $repo_root/$required_source_recipe_file \
+        && ! -L $repo_root/$required_source_recipe_file ]] || {
+        printf 'Missing or unsafe source-recipe file: %s\n' \
+            "$required_source_recipe_file" >&2
+        exit 1
+    }
+done
+install -d -o root -g root -m 0755 \
+    "$source_recipe_root/assets/branding" \
+    "$source_recipe_root/scripts"
+while IFS= read -r -d '' branding_source
+do
+    relative_branding_source=${branding_source#"$repo_root/"}
+    [[ -f $branding_source && ! -L $branding_source ]] || {
+        printf 'Unsafe branding source: %s\n' "$branding_source" >&2
+        exit 1
+    }
+    install -o root -g root -m 0644 "$branding_source" \
+        "$source_recipe_root/$relative_branding_source"
+done < <(find "$repo_root/assets/branding" -maxdepth 1 -type f -print0 \
+    | LC_ALL=C sort -z)
+install -o root -g root -m 0755 "$repo_root/scripts/render-branding.py" \
+    "$source_recipe_root/scripts/render-branding.py"
+install -o root -g root -m 0644 "$repo_root/LICENSE" \
+    "$source_recipe_root/LICENSE"
+(
+    cd "$source_recipe_root"
+    find LICENSE assets scripts -type f -print0 \
+        | LC_ALL=C sort -z | xargs -0 sha256sum > SHA256SUMS
+    sha256sum --check SHA256SUMS
+)
+
 (
     cd "$repo_root"
     {
         find auto config scripts tests -type f -print0
+        find assets/branding -type f -print0
+        find tools -type f -print0
         printf 'LICENSE\0SNAPSHOT\0VERSION\0'
     } | LC_ALL=C sort -z | xargs -0 sha256sum
 ) > "$artifact_root/recipe-SHA256SUMS"
@@ -264,6 +313,36 @@ if [[ -s $artifact_root/live-build-missing-source.txt ]]; then
         'live-build reported binary packages without matching downloaded source.' >&2
     exit 1
 fi
+
+source_recipe_audit_root=$(mktemp -d \
+    "$build_root/.source-recipe-audit.XXXXXXXXXX")
+cleanup_source_recipe_audit()
+{
+    rm -rf -- "$source_recipe_audit_root"
+}
+trap cleanup_source_recipe_audit EXIT HUP INT TERM
+xorriso -osirrox on -indev "$expected_source_iso" \
+    -extract /live/config/includes.source/kythos-recipe \
+    "$source_recipe_audit_root/kythos-recipe" >/dev/null 2>&1 || {
+    printf '%s\n' 'Source ISO lacks the KythOS branding recipe.' >&2
+    exit 1
+}
+(
+    cd "$source_recipe_audit_root/kythos-recipe"
+    sha256sum --check SHA256SUMS
+)
+while IFS= read -r -d '' staged_source
+do
+    relative_staged_source=${staged_source#"$source_recipe_root/"}
+    cmp -s -- "$staged_source" \
+        "$source_recipe_audit_root/kythos-recipe/$relative_staged_source" || {
+        printf 'Source ISO branding recipe differs: %s\n' \
+            "$relative_staged_source" >&2
+        exit 1
+    }
+done < <(find "$source_recipe_root" -type f -print0 | LC_ALL=C sort -z)
+cleanup_source_recipe_audit
+trap - EXIT HUP INT TERM
 
 "$build_root/audit-source-coverage.sh" \
     "$expected_binary_iso" "$expected_source_iso" "$artifact_root"

@@ -16,7 +16,8 @@ package so installed systems receive KythOS policy updates.
   coverage, with license-gated legacy payloads kept on an explicit user
   acceptance path.
 - BIOS and UEFI boot, with signed shim/GRUB/kernel support for Secure Boot.
-- KythOS graphical boot artwork plus graphical and text installer paths.
+- Text-free KythOS boot artwork, including an animated cyan mark during the
+  installed-system Plymouth stage, plus graphical and text installer paths.
 - Software-passphrase encrypted installation and an optional, recovery-safe
   TPM2 enrollment command for an installed LUKS2 system.
 - AppArmor on installed systems, audit logging, authenticated package sources,
@@ -46,7 +47,7 @@ Build in Debian 13 amd64 with root privileges, `live-build`, `debootstrap`,
 
 ```sh
 sudo apt update
-sudo apt install live-build debootstrap squashfs-tools xorriso rsync
+sudo apt install live-build debootstrap squashfs-tools xorriso rsync python3-pil
 sudo ./scripts/build.sh
 ```
 

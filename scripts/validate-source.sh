@@ -21,6 +21,7 @@ for script in \
     "$repo_root/auto/config" \
     "$repo_root/scripts/audit-source-coverage.sh" \
     "$repo_root/scripts/build.sh" \
+    "$repo_root/scripts/render-branding.py" \
     "$repo_root/scripts/validate-source.sh" \
     "$repo_root/tests/test-recovery-topology.sh" \
     "$repo_root/tests/test-tpm2-pcrread-parser.sh" \
@@ -40,6 +41,16 @@ for script in \
     "$repo_root/config/includes.chroot/usr/local/sbin/kythos-security-status"
 do
     case "$script" in
+        */render-branding.py)
+            python3 - "$script" <<'PY' \
+                || fail "Python syntax failed: $script"
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+compile(path.read_text(encoding="utf-8"), str(path), "exec")
+PY
+            ;;
         */build.sh|*/audit-source-coverage.sh)
             bash -n "$script" || fail "shell syntax failed: $script"
             ;;
@@ -72,6 +83,10 @@ check_contains "$config" 'https://snapshot.debian.org/archive/debian/'
 check_contains "$config" 'https://snapshot.debian.org/archive/debian-security/'
 check_contains "$config" 'audit=1 audit_backlog_limit=8192'
 check_contains "$repo_root/scripts/build.sh" 'find auto config scripts tests -type f -print0'
+check_contains "$repo_root/scripts/build.sh" 'find assets/branding -type f -print0'
+check_contains "$repo_root/scripts/build.sh" 'find tools -type f -print0'
+check_contains "$repo_root/tools/qemu-builder/preseed.cfg" 'git live-build'
+check_contains "$repo_root/tools/qemu-builder/preseed.cfg" 'python3-pil'
 
 source_hook="$repo_root/config/hooks/live/005-add-grub2-source.hook.source"
 check_contains "$source_hook" \
@@ -147,6 +162,9 @@ check_contains "$os_release" 'VARIANT_ID=kythos'
 check_contains "$os_release" "KYTHOS_VERSION_ID=\"$version\""
 
 for branding_file in \
+    "$repo_root/assets/branding/kythos-mark-cyan-source.png" \
+    "$repo_root/assets/branding/kythos-boot-source.png" \
+    "$repo_root/assets/branding/kythos-installer-banner-source.png" \
     "$repo_root/config/bootloaders/grub-pc/splash.png" \
     "$repo_root/config/bootloaders/grub-pc/grub.cfg" \
     "$repo_root/config/bootloaders/syslinux_common/splash.png" \
@@ -154,15 +172,34 @@ for branding_file in \
     "$repo_root/config/includes.installer/usr/share/graphics/logo_debian.png" \
     "$repo_root/config/includes.installer/usr/share/graphics/logo_debian_dark.png" \
     "$repo_root/config/includes.chroot/usr/share/plymouth/themes/kythos/kythos-background.png" \
+    "$repo_root/config/includes.chroot/usr/share/plymouth/themes/kythos/kythos-logo.png" \
     "$repo_root/config/includes.chroot/usr/share/plymouth/themes/kythos/kythos.plymouth" \
     "$repo_root/config/includes.chroot/usr/share/plymouth/themes/kythos/kythos.script"
 do
     test -s "$branding_file" || fail "required branding file is empty or missing: $branding_file"
 done
+python3 "$repo_root/scripts/render-branding.py" --check \
+    || fail 'checked-in branding does not match the approved source and renderer'
 check_contains "$repo_root/config/bootloaders/grub-pc/grub.cfg" \
     'Start KythOS Kernal'
 check_contains "$repo_root/config/includes.chroot/usr/share/plymouth/themes/kythos/kythos.plymouth" \
-    'Name=KythOS Kernal'
+    'Name=KythOS'
+plymouth_script="$repo_root/config/includes.chroot/usr/share/plymouth/themes/kythos/kythos.script"
+check_contains "$plymouth_script" 'Image("kythos-logo.png")'
+check_contains "$plymouth_script" 'Plymouth.SetRefreshRate('
+check_contains "$plymouth_script" 'Plymouth.SetRefreshFunction('
+check_contains "$plymouth_script" 'Plymouth.SetBootProgressFunction('
+check_contains "$plymouth_script" 'Plymouth.SetQuitFunction('
+check_contains "$plymouth_script" 'fun show_trace('
+check_contains "$plymouth_script" 'fun show_sweep('
+check_contains "$plymouth_script" 'fun show_breathing('
+check_contains "$plymouth_script" 'fun show_handoff('
+check_contains "$plymouth_script" 'Plymouth.SetDisplayPasswordFunction('
+check_contains "$plymouth_script" 'Plymouth.SetDisplayQuestionFunction('
+check_contains "$plymouth_script" 'Plymouth.SetDisplayMessageFunction('
+if grep -Eq 'Image\.Text\([^)]*KythOS' "$plymouth_script"; then
+    fail 'normal Plymouth branding must not render a KythOS wordmark'
+fi
 branding_hook="$repo_root/config/hooks/live/020-enable-branding.hook.chroot"
 check_contains "$branding_hook" 'SOURCE_DATE_EPOCH must be a decimal Unix timestamp'
 check_contains "$branding_hook" 'install -o root -g root -m 0644 "$os_release_temporary" /etc/os-release'

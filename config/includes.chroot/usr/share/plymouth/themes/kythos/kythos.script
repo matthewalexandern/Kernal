@@ -1,24 +1,40 @@
-Window.SetBackgroundTopColor(0.0, 0.012, 0.035);
-Window.SetBackgroundBottomColor(0.0, 0.004, 0.016);
+# KythOS Plymouth theme
+#
+# Normal boot deliberately contains no text: a quick directional reveal is
+# followed by a diagonal sheen and a quiet breathing glow. Prompt callbacks
+# stop the motion and leave a stable, high-contrast encrypted-volume UI.
 
-background.original = Image("kythos-background.png");
-background.sprite = Sprite();
-background.width = 0;
-background.height = 0;
+Window.SetBackgroundTopColor(0.0, 0.0, 0.0);
+Window.SetBackgroundBottomColor(0.0, 0.0, 0.0);
 
-fun place_background()
+logo.original = Image("kythos-logo.png");
+logo.sprite = Sprite();
+logo.sprite.SetPosition(0, 0, 10);
+logo.reveal_sprite = Sprite();
+logo.reveal_sprite.SetPosition(0, 0, 11);
+logo.glow_sprite = Sprite();
+logo.glow_sprite.SetPosition(0, 0, 5);
+logo.ready = 0;
+logo.window_width = 0;
+logo.window_height = 0;
+
+sweep.count = 16;
+for (index = 0; index < sweep.count; index++)
   {
-    width = Window.GetWidth();
-    height = Window.GetHeight();
-    if (background.width != width || background.height != height)
-      {
-        background.image = background.original.Scale(width, height);
-        background.sprite.SetImage(background.image);
-        background.sprite.SetPosition(Window.GetX(), Window.GetY(), -100);
-        background.width = width;
-        background.height = height;
-      }
+    sweep.stripe[index].sprite = Sprite();
+    sweep.stripe[index].sprite.SetPosition(0, 0, 20);
+    sweep.stripe[index].sprite.SetOpacity(0);
   }
+
+animation.frame = 0;
+animation.trace_frames = 34;
+animation.sweep_frames = 42;
+animation.breathe_angle = 0;
+animation.progress = 0;
+animation.handoff_started = 0;
+animation.handoff_frame = 0;
+
+ui.mode = "normal";
 
 prompt.sprite = Sprite();
 prompt.sprite.SetPosition(0, 0, 10000);
@@ -27,6 +43,165 @@ answer.sprite.SetPosition(0, 0, 10001);
 message.sprite = Sprite();
 message.sprite.SetPosition(0, 0, 10002);
 
+fun hide_sweep()
+  {
+    for (index = 0; index < sweep.count; index++)
+      sweep.stripe[index].sprite.SetOpacity(0);
+  }
+
+fun place_logo()
+  {
+    if (ui.mode == "normal")
+      logo.center_y = Window.GetY() + Window.GetHeight() * 0.50;
+    else
+      logo.center_y = Window.GetY() + Window.GetHeight() * 0.38;
+
+    logo.x = Window.GetX() + Window.GetWidth() / 2 - logo.width / 2;
+    logo.y = logo.center_y - logo.height / 2;
+    logo.sprite.SetPosition(logo.x, logo.y, 10);
+    logo.reveal_sprite.SetPosition(logo.x, logo.y, 11);
+
+    logo.glow_x = logo.x - (logo.glow_width - logo.width) / 2;
+    logo.glow_y = logo.y - (logo.glow_height - logo.height) / 2;
+    logo.glow_sprite.SetPosition(logo.glow_x, logo.glow_y, 5);
+  }
+
+fun prepare_logo()
+  {
+    window_width = Window.GetWidth();
+    window_height = Window.GetHeight();
+
+    if (!logo.ready || logo.window_width != window_width ||
+        logo.window_height != window_height)
+      {
+        logo.target_width = Math.Int(window_width * 0.54);
+        logo.target_height = Math.Int(logo.target_width *
+                                      logo.original.GetHeight() /
+                                      logo.original.GetWidth());
+
+        if (logo.target_height > window_height * 0.48)
+          {
+            logo.target_height = Math.Int(window_height * 0.48);
+            logo.target_width = Math.Int(logo.target_height *
+                                         logo.original.GetWidth() /
+                                         logo.original.GetHeight());
+          }
+
+        logo.width = Math.Max(1, logo.target_width);
+        logo.height = Math.Max(1, logo.target_height);
+        logo.image = logo.original.Scale(logo.width, logo.height);
+        logo.sprite.SetImage(logo.image);
+
+        logo.glow_width = Math.Int(logo.width * 1.025);
+        logo.glow_height = Math.Int(logo.height * 1.025);
+        logo.glow_image = logo.original.Scale(logo.glow_width,
+                                              logo.glow_height);
+        logo.glow_sprite.SetImage(logo.glow_image);
+
+        logo.window_width = window_width;
+        logo.window_height = window_height;
+        logo.ready = 1;
+      }
+
+    place_logo();
+  }
+
+fun show_trace(frame)
+  {
+    progress = Math.Clamp(frame / animation.trace_frames, 0, 1);
+    progress = 1 - (1 - progress) * (1 - progress);
+    reveal_width = Math.Max(1, Math.Int(logo.width * progress));
+
+    logo.reveal_image = logo.image.Crop(0, 0, reveal_width, logo.height);
+    logo.reveal_sprite.SetImage(logo.reveal_image);
+    logo.reveal_sprite.SetPosition(logo.x, logo.y, 11);
+    logo.reveal_sprite.SetOpacity(0.92);
+    logo.sprite.SetOpacity(0);
+    logo.glow_sprite.SetOpacity(progress * 0.09);
+    hide_sweep();
+  }
+
+fun show_sweep(frame)
+  {
+    progress = Math.Clamp(frame / animation.sweep_frames, 0, 1);
+    band_width = Math.Max(2, Math.Int(logo.width * 0.14));
+    slant = Math.Int(logo.width * 0.20);
+    travel = logo.width + band_width + slant;
+    sweep_x = Math.Int(progress * travel) - band_width - slant;
+
+    logo.reveal_sprite.SetOpacity(0);
+    logo.sprite.SetOpacity(0.73 + progress * 0.13);
+    logo.glow_sprite.SetOpacity(0.10 + progress * 0.05);
+
+    for (index = 0; index < sweep.count; index++)
+      {
+        stripe_y = Math.Int(logo.height * index / sweep.count);
+        stripe_bottom = Math.Int(logo.height * (index + 1) / sweep.count);
+        stripe_height = Math.Max(1, stripe_bottom - stripe_y);
+        stripe_x = sweep_x + Math.Int(slant * index /
+                                      (sweep.count - 1));
+        crop_left = Math.Max(0, stripe_x);
+        crop_right = Math.Min(logo.width, stripe_x + band_width);
+
+        if (crop_right > crop_left)
+          {
+            sweep.stripe[index].image = logo.image.Crop(crop_left,
+                                                        stripe_y,
+                                                        crop_right - crop_left,
+                                                        stripe_height);
+            sweep.stripe[index].sprite.SetImage(sweep.stripe[index].image);
+            sweep.stripe[index].sprite.SetPosition(logo.x + crop_left,
+                                                   logo.y + stripe_y,
+                                                   20);
+            sweep.stripe[index].sprite.SetOpacity(1);
+          }
+        else
+          sweep.stripe[index].sprite.SetOpacity(0);
+      }
+  }
+
+fun show_breathing()
+  {
+    animation.breathe_angle += (2 * Math.Pi) / 150;
+    breathe = (Math.Sin(animation.breathe_angle) + 1) / 2;
+
+    logo.reveal_sprite.SetOpacity(0);
+    logo.sprite.SetOpacity(0.84 + breathe * 0.10);
+    logo.glow_sprite.SetOpacity(0.08 + breathe * 0.10);
+    hide_sweep();
+  }
+
+fun show_handoff()
+  {
+    frame = animation.handoff_frame;
+
+    logo.reveal_sprite.SetOpacity(0);
+    hide_sweep();
+
+    if (frame < 8)
+      {
+        progress = frame / 8;
+        logo.sprite.SetOpacity(0.90 + progress * 0.10);
+        logo.glow_sprite.SetOpacity(0.18 + progress * 0.24);
+      }
+    else
+      {
+        progress = Math.Clamp((frame - 8) / 16, 0, 1);
+        logo.sprite.SetOpacity(1 - progress * 0.84);
+        logo.glow_sprite.SetOpacity((1 - progress) * 0.42);
+      }
+
+    animation.handoff_frame += 1;
+  }
+
+fun show_prompt_logo()
+  {
+    logo.reveal_sprite.SetOpacity(0);
+    logo.sprite.SetOpacity(0.94);
+    logo.glow_sprite.SetOpacity(0.11);
+    hide_sweep();
+  }
+
 fun center_sprite(sprite, image, y)
   {
     sprite.SetImage(image);
@@ -34,43 +209,95 @@ fun center_sprite(sprite, image, y)
     sprite.SetY(y);
   }
 
+fun place_prompt()
+  {
+    if (prompt.image)
+      {
+        center_sprite(prompt.sprite, prompt.image,
+                      Window.GetY() + Window.GetHeight() * 0.80);
+      }
+    if (answer.image)
+      {
+        center_sprite(answer.sprite, answer.image,
+                      Window.GetY() + Window.GetHeight() * 0.86);
+      }
+    if (message.image)
+      {
+        center_sprite(message.sprite, message.image,
+                      Window.GetY() + Window.GetHeight() * 0.94);
+      }
+  }
+
+fun refresh_callback()
+  {
+    prepare_logo();
+
+    if (animation.progress >= 0.97 &&
+        animation.frame > animation.trace_frames + animation.sweep_frames)
+      animation.handoff_started = 1;
+
+    if (ui.mode != "normal")
+      show_prompt_logo();
+    else if (animation.handoff_started)
+      show_handoff();
+    else if (animation.frame <= animation.trace_frames)
+      show_trace(animation.frame);
+    else if (animation.frame <= animation.trace_frames +
+                                  animation.sweep_frames)
+      show_sweep(animation.frame - animation.trace_frames);
+    else
+      show_breathing();
+
+    place_prompt();
+    animation.frame += 1;
+  }
+
 fun display_normal_callback()
   {
+    resumed_from_prompt = ui.mode != "normal";
+    global.ui.mode = "normal";
     prompt.sprite.SetOpacity(0);
     answer.sprite.SetOpacity(0);
+
+    if (resumed_from_prompt &&
+        animation.frame < animation.trace_frames + animation.sweep_frames)
+      animation.frame = animation.trace_frames + animation.sweep_frames + 1;
   }
 
 fun display_password_callback(text, bullets)
   {
-    place_background();
-    prompt.image = Image.Text(text, 0.92, 0.97, 1.0);
-    center_sprite(prompt.sprite, prompt.image,
-                  Window.GetY() + Window.GetHeight() * 0.86);
-    prompt.sprite.SetOpacity(1);
+    global.ui.mode = "password";
+    prepare_logo();
 
+    prompt.image = Image.Text(text, 0.92, 0.97, 1.0);
     answer.text = "";
     for (index = 0; index < bullets; index++)
       answer.text += "*";
     answer.image = Image.Text(answer.text, 0.45, 0.86, 1.0);
-    center_sprite(answer.sprite, answer.image,
-                  Window.GetY() + Window.GetHeight() * 0.91);
+
+    place_prompt();
+    prompt.sprite.SetOpacity(1);
     answer.sprite.SetOpacity(1);
   }
 
 fun display_question_callback(text, entry)
   {
-    display_password_callback(text, 0);
+    global.ui.mode = "question";
+    prepare_logo();
+
+    prompt.image = Image.Text(text, 0.92, 0.97, 1.0);
     answer.image = Image.Text(entry, 0.45, 0.86, 1.0);
-    center_sprite(answer.sprite, answer.image,
-                  Window.GetY() + Window.GetHeight() * 0.91);
+
+    place_prompt();
+    prompt.sprite.SetOpacity(1);
     answer.sprite.SetOpacity(1);
   }
 
 fun display_message_callback(text)
   {
     message.image = Image.Text(text, 0.86, 0.94, 1.0);
-    center_sprite(message.sprite, message.image,
-                  Window.GetY() + Window.GetHeight() * 0.95);
+    place_prompt();
+    message.sprite.SetOpacity(1);
   }
 
 fun hide_message_callback(text)
@@ -78,14 +305,34 @@ fun hide_message_callback(text)
     message.sprite.SetOpacity(0);
   }
 
-fun refresh_callback()
+fun progress_callback(duration, progress)
   {
-    place_background();
+    if (progress > animation.progress)
+      animation.progress = progress;
+
+    if (animation.progress >= 0.97 &&
+        animation.frame > animation.trace_frames + animation.sweep_frames)
+      animation.handoff_started = 1;
   }
 
+fun quit_callback()
+  {
+    hide_sweep();
+    logo.reveal_sprite.SetOpacity(0);
+
+    if (!animation.handoff_started)
+      {
+        logo.sprite.SetOpacity(1);
+        logo.glow_sprite.SetOpacity(0.42);
+      }
+  }
+
+Plymouth.SetRefreshRate(50);
 Plymouth.SetRefreshFunction(refresh_callback);
+Plymouth.SetBootProgressFunction(progress_callback);
 Plymouth.SetDisplayNormalFunction(display_normal_callback);
 Plymouth.SetDisplayPasswordFunction(display_password_callback);
 Plymouth.SetDisplayQuestionFunction(display_question_callback);
 Plymouth.SetDisplayMessageFunction(display_message_callback);
 Plymouth.SetHideMessageFunction(hide_message_callback);
+Plymouth.SetQuitFunction(quit_callback);

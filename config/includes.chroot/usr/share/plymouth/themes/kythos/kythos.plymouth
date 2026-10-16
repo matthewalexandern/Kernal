@@ -1,6 +1,6 @@
 [Plymouth Theme]
-Name=KythOS Kernal
-Description=KythOS Kernal boot and encrypted-volume prompt
+Name=KythOS
+Description=KythOS animated boot and encrypted-volume prompt
 ModuleName=script
 
 [script]
