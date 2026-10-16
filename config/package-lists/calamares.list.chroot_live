@@ -12,7 +12,6 @@ x11-xserver-utils
 openbox
 xterm
 dbus-x11
-ckbcomp
 rsync
 squashfs-tools
 fonts-dejavu-core
