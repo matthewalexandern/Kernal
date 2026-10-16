@@ -47,6 +47,13 @@ do
     test -x "$script" || fail "script is not executable: $script"
 done
 
+security_status="$repo_root/config/includes.chroot/usr/local/sbin/kythos-security-status"
+check_contains "$security_status" \
+    "grep -q ' (enforce)$' /sys/kernel/security/apparmor/profiles"
+if grep -Fq 'test -s /sys/kernel/security/apparmor/profiles' "$security_status"; then
+    fail 'AppArmor securityfs state must be read, not tested by pseudo-file size'
+fi
+
 config="$repo_root/auto/config"
 check_contains "$config" "--distribution trixie"
 check_contains "$config" "--archive-areas 'main contrib non-free non-free-firmware'"

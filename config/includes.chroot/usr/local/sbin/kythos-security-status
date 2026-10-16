@@ -95,12 +95,12 @@ else
 fi
 
 if systemctl is-active --quiet apparmor.service \
-    && test -s /sys/kernel/security/apparmor/profiles; then
-    pass AppArmor 'service active; profiles loaded'
+    && grep -q ' (enforce)$' /sys/kernel/security/apparmor/profiles 2>/dev/null; then
+    pass AppArmor 'service active; enforcing profiles loaded'
 elif test "$live_session" = true; then
     warn AppArmor 'live overlay exception; installed system must enforce'
 else
-    fail AppArmor 'service inactive or no profiles loaded'
+    fail AppArmor 'service inactive or no enforcing profiles loaded'
 fi
 
 if auditctl -s 2>/dev/null | grep -Eq '^enabled[[:space:]]+1$' \
