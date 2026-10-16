@@ -33,6 +33,7 @@ for script in \
     "$repo_root/config/hooks/live/015-prepare-compliance.hook.chroot" \
     "$repo_root/config/hooks/live/020-enable-branding.hook.binary" \
     "$repo_root/config/hooks/live/020-enable-branding.hook.chroot" \
+    "$repo_root/config/hooks/live/025-network-defaults.hook.chroot" \
     "$repo_root/config/hooks/live/030-configure-authentication.hook.chroot" \
     "$repo_root/config/hooks/live/060-record-installer-packages.hook.chroot" \
     "$repo_root/config/hooks/live/030-record-installer-packages.hook.binary" \
@@ -92,7 +93,7 @@ for config in (root / 'config/includes.chroot/etc/calamares').rglob('*'):
     if config.suffix in ('.conf', '.desc') and not isinstance(yaml.safe_load(config.read_text()), dict):
         raise ValueError('Expected installer configuration map: ' + str(config))
 PY
-for installer_test in test-installer-removal-plan.py test-calamares-core.py test-setup-wizard.py test-fido2-login.py test-hardware-status.py; do
+for installer_test in test-installer-removal-plan.py test-calamares-core.py test-setup-wizard.py test-fido2-login.py test-hardware-status.py test-cy-help.py test-network-defaults.py; do
     PYTHONDONTWRITEBYTECODE=1 python3 "$repo_root/tests/$installer_test" \
         || fail "installer test failed: $installer_test"
 done
@@ -294,7 +295,7 @@ check_contains "$access_packages" 'clevis-initramfs'
 check_contains "$access_packages" 'clevis-tpm2'
 
 installer_preseed="$repo_root/config/includes.installer/preseed.cfg"
-check_contains "$installer_preseed" 'd-i netcfg/get_hostname string kythos'
+check_contains "$installer_preseed" 'd-i netcfg/get_hostname string KythOS'
 check_contains "$installer_preseed" 'd-i netcfg/get_hostname seen false'
 check_contains "$installer_preseed" 'd-i passwd/root-login boolean false'
 check_contains "$installer_preseed" 'd-i user-setup/allow-password-weak boolean true'

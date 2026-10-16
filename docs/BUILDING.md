@@ -173,6 +173,9 @@ The release images already contain checked-in boot artwork. Pillow is used by
 source validation and does not enter the live filesystem. When intentionally
 updating the approved source mark, regenerate every derived image in one pass:
 
+The package-install command below runs on the standard Debian build host.
+The installed KythOS operator command is `cy`.
+
 ```sh
 sudo apt install python3-pil
 python3 scripts/render-branding.py

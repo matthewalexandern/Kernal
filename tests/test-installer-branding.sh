@@ -123,12 +123,19 @@ cmp "$work/output.templates" "$work/output-again.templates"
 # Set only an editable fallback, not netcfg/hostname which forces the value
 # over a network-provided name. The installer must still show the prompt.
 preseed="$repo_root/config/includes.installer/preseed.cfg"
-grep -Fxq 'd-i netcfg/get_hostname string kythos' "$preseed"
+grep -Fxq 'd-i netcfg/get_hostname string KythOS' "$preseed"
 grep -Fxq 'd-i netcfg/get_hostname seen false' "$preseed"
 if grep -Eq '^d-i netcfg/hostname[[:space:]]' "$preseed"; then
     printf '%s\n' 'installer hostname must remain editable' >&2
     exit 1
 fi
+
+# The graphical installer uses the same editable, case-preserved default and
+# writes the chosen hostname through its native target-file implementation.
+calamares_users="$repo_root/config/includes.chroot/etc/calamares/modules/users.conf"
+grep -Fxq '  template: KythOS' "$calamares_users"
+grep -Fxq '  location: EtcFile' "$calamares_users"
+grep -Fxq '  writeHostsFile: true' "$calamares_users"
 
 # Exercise the wrapper with a stand-in native loader. The loader receives the
 # original arguments and its status is returned without translation.

@@ -9,12 +9,15 @@ import grp
 import json
 import os
 from pathlib import Path
+import posixpath
 import pwd
 import re
 import shutil
 import stat
 import subprocess
 import sys
+import tempfile
+from urllib.parse import unquote, urlsplit
 
 STATE_DIR = Path("/var/lib/kythos")
 MARKER_TEXT = "KythOS Calamares target v1\n"
@@ -51,6 +54,8 @@ REQUIRED_PACKAGES = frozenset((
     "needrestart", "debsums", "cron", "s-nail",
 ))
 PACKAGE_RE = re.compile(r"[a-z0-9][a-z0-9+.-]*(?::[a-z0-9][a-z0-9-]*)?\Z")
+APT_LIST_RE = re.compile(r"^[ \t]*deb(?:-src)?[ \t]+(?:\[[^\]\r\n]*\][ \t]+)?([^\s#]+)")
+APT_FIELD_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9-]*):[ \t]*(.*?)(\r?\n)?$")
 
 
 def command(arguments, capture=False):
@@ -155,6 +160,130 @@ def removal_plan_packages(output):
     return result
 
 
+def live_medium_uri(uri):
+    """Recognize only transient live-boot mounts, not arbitrary local repos."""
+    if uri.partition(":")[0].lower() != "file":
+        return False
+    try:
+        parsed = urlsplit(uri)
+    except ValueError:
+        return False
+    if parsed.netloc.lower() not in ("", "localhost"):
+        return False
+    path = "/" + posixpath.normpath(unquote(parsed.path)).lstrip("/")
+    return any(path == root or path.startswith(root + "/")
+               for root in ("/run/live/medium", "/lib/live/mount/medium"))
+
+
+def installed_apt_list(text):
+    result = []
+    for line in text.splitlines(keepends=True):
+        match = APT_LIST_RE.match(line)
+        if not match or not live_medium_uri(match[1]):
+            result.append(line)
+    return "".join(result)
+
+
+def installed_apt_stanza(lines):
+    # Preserve unrelated fields (including embedded signing keys), comments,
+    # and continuation lines exactly. Change only the live-medium URI tokens.
+    uri_lines, uri_fields, enabled, field = [], 0, [], None
+    for number, line in enumerate(lines):
+        if line.startswith("#"):
+            continue
+        match = APT_FIELD_RE.match(line)
+        if match:
+            field = match[1].lower()
+            if field == "uris":
+                uri_fields += 1
+                uri_lines.append((number, match[2].split(), line[:line.index(":") + 1]))
+            elif field == "enabled":
+                enabled.append(match[2].strip().lower())
+        elif line[:1] in (" ", "\t"):
+            if field == "uris":
+                uri_lines.append((number, line.split(), line[:len(line) - len(line.lstrip())]))
+            elif field == "enabled":
+                enabled[-1] = (enabled[-1] + " " + line.strip()).strip().lower()
+        else:
+            field = None
+    if enabled == ["no"]:
+        return "".join(lines)
+    if not any(live_medium_uri(uri) for _, uris, _ in uri_lines for uri in uris):
+        return "".join(lines)
+    if uri_fields != 1 or len(enabled) > 1:
+        raise ValueError("Cannot safely edit an ambiguous live-media APT source stanza.")
+    remaining = [uri for _, uris, _ in uri_lines for uri in uris if not live_medium_uri(uri)]
+    if not remaining:
+        return "".join(line for line in lines if line.startswith("#"))
+    result = list(lines)
+    for number, uris, prefix in uri_lines:
+        kept = [uri for uri in uris if not live_medium_uri(uri)]
+        if kept == uris:
+            continue
+        ending = "\r\n" if lines[number].endswith("\r\n") else "\n" if lines[number].endswith("\n") else ""
+        result[number] = (prefix + (" " if prefix.endswith(":") and kept else "") + " ".join(kept) + ending
+                          if kept or prefix.endswith(":") else "")
+    return "".join(result)
+
+
+def installed_apt_deb822(text):
+    result, stanza = [], []
+    for line in text.splitlines(keepends=True):
+        if not line.strip():
+            result.append(installed_apt_stanza(stanza))
+            result.append(line)
+            stanza = []
+        else:
+            stanza.append(line)
+    result.append(installed_apt_stanza(stanza))
+    return "".join(result)
+
+
+def live_apt_source_changes(directory=Path("/etc/apt")):
+    paths = [directory / "sources.list"]
+    parts = directory / "sources.list.d"
+    if parts.is_dir():
+        paths.extend(path for path in sorted(parts.iterdir())
+                     if re.fullmatch(r"[A-Za-z0-9_.-]+\.(?:list|sources)", path.name))
+    changes = []
+    for path in paths:
+        if not path.is_file():
+            continue
+        original = path.read_bytes().decode("utf-8")
+        updated = (installed_apt_deb822 if path.suffix == ".sources" else installed_apt_list)(original)
+        if updated != original:
+            if path.is_symlink() or path.parent.is_symlink():
+                raise ValueError("Refusing to replace a symlinked live-media APT source.")
+            changes.append((path, updated, path.stat()))
+    return changes
+
+
+def configure_installed_apt_sources(directory=Path("/etc/apt")):
+    # Plan every edit before writing any file. Online mirrors, suites,
+    # components, signing policy, third-party sources and cdrom entries stay.
+    for path, updated, metadata in live_apt_source_changes(directory):
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(dir=path.parent, prefix="." + path.name + ".kythos-", delete=False) as stream:
+                temporary = Path(stream.name)
+                os.fchmod(stream.fileno(), stat.S_IMODE(metadata.st_mode))
+                current = os.fstat(stream.fileno())
+                if (current.st_uid, current.st_gid) != (metadata.st_uid, metadata.st_gid):
+                    os.fchown(stream.fileno(), metadata.st_uid, metadata.st_gid)
+                stream.write(updated.encode("utf-8"))
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+
+
+def verify_installed_apt_sources(directory=Path("/etc/apt")):
+    if live_apt_source_changes(directory):
+        raise ValueError("An active live-media APT source remains in the installed system.")
+
+
 def purge_live_packages():
     names = manifest_packages()
     status = command(["/usr/bin/dpkg-query", "-W", "-f=${binary:Package}\t${db:Status-Status}\n"], capture=True)
@@ -251,6 +380,7 @@ def prepare(data):
     if Path("/crypto_keyfile.bin").exists():
         raise ValueError("A plaintext encryption key must not be installed in the public boot layout.")
     configure_crypttab(data)
+    configure_installed_apt_sources()
     Path("/etc/initramfs-tools/conf.d/60-kythos-permissions").write_text("UMASK=0077\n")
     # Suppress service startup while packages are removed in the target.
     policy = Path("/usr/sbin/policy-rc.d")
@@ -278,6 +408,7 @@ def prepare(data):
 
 
 def verify(data):
+    verify_installed_apt_sources()
     for path in (Path("/etc/os-release"), Path("/usr/lib/os-release")):
         identity = read_os_release(path)
         if identity.get("NAME", "").strip('"') != "KythOS Kernal" or identity.get("ID") != "kythos":

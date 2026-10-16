@@ -317,5 +317,100 @@ class TargetTests(unittest.TestCase):
         self.assertFalse(locale["useSystemTimezone"])
 
 
+class InstalledAptTests(unittest.TestCase):
+    def sources(self, directory, name, contents):
+        path = Path(directory) / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(contents)
+        return path
+
+    def test_actual_live_build_source_becomes_signed_online_sources_without_rewriting_them(self):
+        live = "deb [trusted=yes] file:/run/live/medium trixie main contrib non-free non-free-firmware\n"
+        online = ("deb https://deb.debian.org/debian/ trixie main contrib non-free non-free-firmware\n"
+                  "#deb-src https://deb.debian.org/debian/ trixie main contrib non-free non-free-firmware\n"
+                  "deb https://security.debian.org/debian-security/ trixie-security main contrib non-free non-free-firmware\n"
+                  "deb https://deb.debian.org/debian/ trixie-updates main contrib non-free non-free-firmware\n")
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.sources(directory, "sources.list", live + online)
+            path.chmod(0o640)
+            with self.assertRaisesRegex(ValueError, "active live-media"):
+                target.verify_installed_apt_sources(Path(directory))
+            target.configure_installed_apt_sources(Path(directory))
+            self.assertEqual(path.read_text(), online)
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o640)
+            target.verify_installed_apt_sources(Path(directory))
+            before = path.stat().st_ino
+            target.configure_installed_apt_sources(Path(directory))
+            self.assertEqual(path.stat().st_ino, before)  # A second run makes no edits.
+
+    def test_only_live_boot_mounts_are_removed_from_one_line_sources(self):
+        remove = ("deb-src [arch=amd64 signed-by=/keys/live.gpg] file:///run/live/medium/debian trixie main\n"
+                  "deb file://localhost/lib/live/mount/medium trixie main\n"
+                  "deb file:/run/live/%6dedium/./pool trixie main\n")
+        preserve = ("# deb file:/run/live/medium trixie main\n"
+                    "deb [signed-by=/keys/vendor.gpg] https://example.test/run/live/medium stable main # vendor\n"
+                    "deb file:/run/live/medium-backup trixie main\n"
+                    "deb file:/srv/local-repository ./\n"
+                    "deb file://repository-host/run/live/medium trixie main\n"
+                    "deb cdrom:[KythOS installer]/ trixie main\n"
+                    "unknown-source /run/live/medium kept-as-is\n")
+        self.assertEqual(target.installed_apt_list(remove + preserve), preserve)
+
+    def test_mixed_deb822_retains_online_uris_signing_keys_comments_and_unknown_fields(self):
+        before = ("# vendor and installer share suite settings\r\n"
+                  "Types: deb deb-src\r\n"
+                  "URIs: file:/run/live/medium https://deb.debian.org/debian/\r\n"
+                  " https://mirror.example.test/debian/\r\n"
+                  " file:///lib/live/mount/medium/pool\r\n"
+                  "# retained comment between fields\r\n"
+                  "Suites: trixie trixie-updates\r\n"
+                  "Components: main non-free-firmware\r\n"
+                  "X-Vendor-Note: keep this exactly\r\n"
+                  "Signed-By:\r\n"
+                  " -----BEGIN PGP PUBLIC KEY BLOCK-----\r\n"
+                  " .\r\n"
+                  " retained-key-material\r\n"
+                  " -----END PGP PUBLIC KEY BLOCK-----\r\n")
+        expected = before.replace("URIs: file:/run/live/medium https://", "URIs: https://").replace(
+            " file:///lib/live/mount/medium/pool\r\n", "")
+        self.assertEqual(target.installed_apt_deb822(before), expected)
+
+    def test_deb822_live_only_stanzas_are_removed_and_disabled_stanzas_preserved(self):
+        live = "# old installation source\nTypes: deb\nURIs: file:/run/live/medium\nSuites: trixie\nComponents: main\n"
+        disabled = "Types: deb\nURIs: file:/run/live/medium\nEnabled:\n no\nSuites: trixie\nComponents: main\n"
+        online = "Types: deb\nURIs:\n https://security.debian.org/debian-security/\nSuites: trixie-security\nComponents: main\n"
+        self.assertEqual(target.installed_apt_deb822(live + "\n" + disabled + "\n" + online),
+                         "# old installation source\n\n" + disabled + "\n" + online)
+        mixed = "Types: deb\nURIs: file:/run/live/medium\n https://deb.debian.org/debian/\nSuites: trixie\nComponents: main\n"
+        self.assertEqual(target.installed_apt_deb822(mixed), mixed.replace("URIs: file:/run/live/medium", "URIs:"))
+
+    def test_ambiguous_deb822_prevents_all_edits_instead_of_losing_unknown_configuration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            first = self.sources(directory, "sources.list", "deb file:/run/live/medium trixie main\n")
+            contents = "Types: deb\nURIs: file:/run/live/medium\nURIs: https://example.test/debian\nSuites: trixie\nComponents: main\n"
+            other = self.sources(directory, "sources.list.d/vendor.sources", contents)
+            with self.assertRaisesRegex(ValueError, "ambiguous"):
+                target.configure_installed_apt_sources(Path(directory))
+            self.assertIn("file:/run/live/medium", first.read_text())
+            self.assertEqual(other.read_text(), contents)
+
+    def test_unknown_files_and_online_symlinks_stay_untouched_and_live_symlinks_are_refused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            disabled = self.sources(root, "sources.list.d/vendor.list.disabled", "deb file:/run/live/medium trixie main\n")
+            online = self.sources(root, "vendor-original", "deb [signed-by=/key.gpg] https://example.test/ stable main\n")
+            link = root / "sources.list.d/vendor.list"
+            link.symlink_to(online)
+            target.configure_installed_apt_sources(root)
+            self.assertTrue(link.is_symlink())
+            self.assertEqual(link.read_bytes(), online.read_bytes())
+            self.assertIn("file:/run/live/medium", disabled.read_text())
+            online.write_text("deb file:/run/live/medium trixie main\n")
+            with self.assertRaisesRegex(ValueError, "symlinked"):
+                target.configure_installed_apt_sources(root)
+            self.assertTrue(link.is_symlink())
+            self.assertIn("file:/run/live/medium", online.read_text())
+
+
 if __name__ == "__main__":
     unittest.main()

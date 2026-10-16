@@ -1,0 +1,8 @@
+#!/bin/sh
+# Validate the default profile offline; never activate builder interfaces.
+set -eu
+profile=/etc/NetworkManager/system-connections/90-kythos-automatic-ethernet.nmconnection
+chown root:root "$profile"
+chmod 0600 "$profile"
+/usr/bin/nmcli --offline connection modify connection.autoconnect true < "$profile" > /dev/null
+printf '%s\n' 'KythOS Ethernet DHCP fallback: native keyfile validation passed.'

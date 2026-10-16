@@ -205,6 +205,10 @@ used when an edition opens the port.
 Use `cy` for interactive package management:
 
 ```sh
+cy help
+cy search package-name
+cy show package-name
+cy list --installed
 sudo cy update
 sudo cy install package-name
 sudo cy full-upgrade
@@ -221,3 +225,17 @@ signature verification. An administrator must verify local-package origin and
 integrity through a separate deliberate workflow. The `apt` binary remains
 installed because system services and third-party package scripts depend on
 the standard Debian interface; `cy` is the KythOS operator command.
+
+`cy`, `cy help`, and `cy --help` display KythOS command examples. Version and
+package output retain the real backend and repository provenance. In an
+authenticated root shell, use `cy update` without another `sudo`.
+
+## Administrator command lookup
+
+Login shells include `/usr/local/sbin`, `/usr/sbin`, and `/sbin` so commands
+such as `useradd` can be found from an ordinary account. Creating or changing
+accounts still requires administrator permission, for example
+`sudo useradd --create-home account-name`. `sudo su` remains available to a
+sudo-authorized administrator; `sudo -i` also opens a root login shell.
+The root account stays locked for direct password login. A PATH change does
+not grant privileges or change authentication policy.

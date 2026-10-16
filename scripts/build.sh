@@ -206,11 +206,15 @@ required_source_recipe_files=(
     LICENSE
     NOTICE
     docs/BRANDING.md
+    docs/NETWORKING.md
     config/includes.installer/etc/lsb-release
     config/includes.installer/usr/lib/debian-installer-startup.d/S19kythos-branding
     config/includes.installer/usr/lib/kythos/debconf-loadtemplate
     config/includes.installer/usr/lib/kythos/transform-installer-template
     config/includes.chroot/etc/update-motd.d/10-uname
+    config/includes.chroot/etc/profile.d/50-kythos-path.sh
+    config/includes.chroot/etc/NetworkManager/system-connections/90-kythos-automatic-ethernet.nmconnection
+    config/hooks/live/025-network-defaults.hook.chroot
     tests/test-installer-branding.sh
     tests/test-login-branding.sh
     tests/test-calamares-core.py
@@ -218,6 +222,8 @@ required_source_recipe_files=(
     tests/test-installer-removal-plan.py
     tests/test-fido2-login.py
     tests/test-hardware-status.py
+    tests/test-cy-help.py
+    tests/test-network-defaults.py
     tests/calamares-storage-policy.cpp
 )
 for required_source_recipe_file in "${required_source_recipe_files[@]}"

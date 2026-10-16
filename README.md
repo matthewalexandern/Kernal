@@ -27,6 +27,9 @@ package so installed systems receive KythOS policy updates.
   inbound nftables policy.
 - Wired and wireless networking, common filesystems, LVM, software RAID,
   NVMe tooling, Bluetooth, and signed `fwupd` support.
+- Managed Ethernet adapters, including USB adapters, automatically connect
+  using DHCP. Configured static profiles take precedence. Wi-Fi uses DHCP
+  after joining a configured network.
 - Password-capable SSH with root and empty-password login prohibited. The
   common firewall keeps port 22 closed until an edition explicitly opens it.
 - Optional FIDO2 key login at the local console, with verified enrollment and
@@ -50,6 +53,9 @@ edition adds only the inbound and forwarding rules and packages it needs.
 
 Build in Debian 13 amd64 with root privileges, `live-build`, `debootstrap`,
 `squashfs-tools`, `xorriso`, and `rsync`:
+
+These bootstrap commands run on a standard Debian build host. Use `cy` for
+interactive package management inside the installed KythOS system.
 
 ```sh
 sudo apt update
@@ -131,6 +137,7 @@ packages require the recipient to accept separate license terms.
 - [Compliance position and STIG map](docs/COMPLIANCE.md)
 - [Encryption, SSH, and `cy`](docs/ENCRYPTION-SSH-CY.md)
 - [NVIDIA driver path](docs/NVIDIA.md)
+- [Network defaults](docs/NETWORKING.md)
 - [Building and testing](docs/BUILDING.md)
 - [Identity and retained upstream references](docs/BRANDING.md)
 - [Release checklist](docs/RELEASE-CHECKLIST.md)

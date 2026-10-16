@@ -12,6 +12,12 @@ mark on black. Encryption prompts and boot questions remain readable.
 The SSH server omits the distribution suffix from its protocol banner while
 retaining the upstream OpenSSH version.
 
+The local console banner is `KythOS Kernal 2027 | https://kythos.ai tty1`, with the
+terminal name expanded by agetty from `\l` in `/etc/issue`. The year `2027`
+is the requested banner text, independent of the release version and build
+date. `/etc/issue.net` uses the same identity without a terminal suffix.
+The displayed domain does not change the machine's hostname or DNS settings.
+
 The installer keeps its upstream native template loader. A startup hook routes
 template loads through a small presentation filter, including templates loaded
 later by installer components. Only description fields in an explicit list of
@@ -22,9 +28,10 @@ filter accompany the source ISO.
 The optional debug-log web page also receives KythOS Kernal headings while
 retaining its upstream paths and serving behavior.
 
-The installer offers `kythos` as an editable default hostname. A hostname cannot
-contain the spaces in the full display name. Network-provided hostnames and a
-user-entered hostname retain their normal meaning.
+Both installers offer `KythOS` as an editable default hostname and preserve its
+case in the installed hostname. A hostname cannot contain the spaces in the
+full display name. Network-provided hostnames and a user-entered hostname
+retain their normal meaning.
 
 The login header prints the running kernel type, release, and architecture
 without the compiler/vendor string from `uname -v`. The kernel binary and

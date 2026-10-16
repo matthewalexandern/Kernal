@@ -1,0 +1,24 @@
+# Fallback for managed Ethernet, including PCI/virtio and USB adapters.
+# Explicit profiles normally have priority 0 and are preferred to this one.
+# No interface or MAC binding: multi-connect permits simultaneous adapters.
+# NetworkManager derives a persistent UUID from this filename.
+[connection]
+id=KythOS automatic Ethernet
+type=ethernet
+autoconnect=true
+autoconnect-priority=-999
+autoconnect-retries=0
+multi-connect=3
+
+[ethernet]
+
+# Virtual Ethernet endpoints belong to their container/hypervisor profiles.
+# Bridge and tunnel device types are not Ethernet connections.
+[match]
+driver=!veth;!tun;
+
+[ipv4]
+method=auto
+
+[ipv6]
+method=auto
