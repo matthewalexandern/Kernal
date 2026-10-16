@@ -188,24 +188,17 @@ do
         exit 1
     }
 done
-install -d -o root -g root -m 0755 \
-    "$source_recipe_root/assets/branding" \
-    "$source_recipe_root/scripts"
-while IFS= read -r -d '' branding_source
+for required_source_recipe_file in "${required_source_recipe_files[@]}"
 do
-    relative_branding_source=${branding_source#"$repo_root/"}
-    [[ -f $branding_source && ! -L $branding_source ]] || {
-        printf 'Unsafe branding source: %s\n' "$branding_source" >&2
-        exit 1
-    }
-    install -o root -g root -m 0644 "$branding_source" \
-        "$source_recipe_root/$relative_branding_source"
-done < <(find "$repo_root/assets/branding" -maxdepth 1 -type f -print0 \
-    | LC_ALL=C sort -z)
-install -o root -g root -m 0755 "$repo_root/scripts/render-branding.py" \
-    "$source_recipe_root/scripts/render-branding.py"
-install -o root -g root -m 0644 "$repo_root/LICENSE" \
-    "$source_recipe_root/LICENSE"
+    source_recipe_mode=0644
+    [[ $required_source_recipe_file != scripts/render-branding.py ]] \
+        || source_recipe_mode=0755
+    install -d -o root -g root -m 0755 \
+        "$source_recipe_root/$(dirname -- "$required_source_recipe_file")"
+    install -o root -g root -m "$source_recipe_mode" \
+        "$repo_root/$required_source_recipe_file" \
+        "$source_recipe_root/$required_source_recipe_file"
+done
 (
     cd "$source_recipe_root"
     find LICENSE assets scripts -type f -print0 \
@@ -217,8 +210,12 @@ install -o root -g root -m 0644 "$repo_root/LICENSE" \
     cd "$repo_root"
     {
         find auto config scripts tests -type f -print0
-        find assets/branding -type f -print0
-        find tools -type f -print0
+        printf '%s\0' \
+            assets/branding/IMAGEGEN-PROMPT.md \
+            assets/branding/kythos-boot-source.png \
+            assets/branding/kythos-installer-banner-source.png \
+            assets/branding/kythos-mark-cyan-source.png \
+            tools/qemu-builder/preseed.cfg
         printf 'LICENSE\0SNAPSHOT\0VERSION\0'
     } | LC_ALL=C sort -z | xargs -0 sha256sum
 ) > "$artifact_root/recipe-SHA256SUMS"
