@@ -1,0 +1,16 @@
+{
+  "architecture": "amd64",
+  "files": {
+    "partition/libcalamares_viewmodule_partition.so": "f64b79ee56ae8b3a43b704938eb7f4db972b5221502bf0c035d2cd8cd7ac82e4",
+    "partition/module.desc": "f2e35fa72e646c3c381c2c2b4fb41ec13eeee420b9357aab76e9ad6d4a439894"
+  },
+  "installed_boot_test": "not-run-by-module-build",
+  "native_target": "calamares_viewmodule_partition",
+  "patch": "0001-validate-proposed-boot-and-swap-layout.patch",
+  "patch_sha256": "2e744ea5507c35e4432c87d71376fb012ab07290203259232e5f41f56b9079a3",
+  "policy_test": "passed",
+  "required_runtime_package_version": "3.3.14-1",
+  "source_package": "calamares",
+  "source_version": "3.3.14-1",
+  "upstream_license": "GPL-3.0-or-later"
+}

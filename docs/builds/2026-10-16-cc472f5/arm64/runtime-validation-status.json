@@ -1,0 +1,13 @@
+{
+  "Parallels": "untested",
+  "Secure_Boot": "untested",
+  "architecture": "arm64",
+  "boot": "untested",
+  "compliance": "No FIPS certification or STIG compliance established.",
+  "image_source_commit": "cc472f571c2784a105ee12e5df408275ef14fa37",
+  "installation": "untested",
+  "physical_hardware": "untested",
+  "schema": 1,
+  "scope": "Cross-architecture/native-target build and source/transfer gates are not runtime acceptance. AMD64 evidence is scoped separately.",
+  "status": "untested"
+}

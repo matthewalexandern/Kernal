@@ -1,0 +1,45 @@
+{
+  "current_build_run": "20261016T160258Z",
+  "current_environment": {
+    "LANG": "C.UTF-8",
+    "LC_ALL": "C.UTF-8"
+  },
+  "historical_failure": {
+    "build_run": "20261016T153913Z",
+    "cause": "Tuple inputs sorted under LC_ALL=C; bare comm inherited en_US.UTF-8 from persistent build service.",
+    "classification": "Earlier failed build; not promoted by this record",
+    "comparisons": {
+      "C": {
+        "missing_output_lines": 133,
+        "missing_output_sha256": "5122d33fbca669afa4ede8ad67a1a90dc024a87bd977cde50560f5834d8f2c03",
+        "returncode": 0,
+        "stderr": ""
+      },
+      "C.UTF-8": {
+        "missing_output_lines": 133,
+        "missing_output_sha256": "5122d33fbca669afa4ede8ad67a1a90dc024a87bd977cde50560f5834d8f2c03",
+        "returncode": 0,
+        "stderr": ""
+      },
+      "en_US.UTF-8": {
+        "missing_output_lines": 138,
+        "missing_output_sha256": "4406e2e60f59446bedf8ad497ca8f62c58ee9304194c47a82672f1c49fa3cdb4",
+        "returncode": 1,
+        "stderr": "comm: file 1 is not in sorted order\ncomm: file 2 is not in sorted order\ncomm: input is not in sorted order\n"
+      }
+    },
+    "exact_input_sha256": {
+      "provided.tsv": "af80612a108ae98e36e32788504ab12e398e901f3312a7bd0d218d6cab45c062",
+      "required.tsv": "51a48f2e00c1abd5ef10ccf10d9abb3ad6697097e3873919e1c946bac510e030"
+    },
+    "recovery": "Fresh normal full build under explicit C.UTF-8 with same clean source bundle; no source patches, old chroot/index reuse or skipped gates.",
+    "unchanged_input_counts": {
+      "provided_at_failure": 535,
+      "required": 666
+    }
+  },
+  "image_source_commit": "cc472f571c2784a105ee12e5df408275ef14fa37",
+  "original_locale_comparison_sha256": "d70ef41f34d2ef5ecd244a72a728f79fe9d3166f3b657104530ace2d5675aab2",
+  "schema": 1,
+  "scope": "Build-process locale pin, not a change to installed distribution locale or proof of portability to arbitrary build locales."
+}

@@ -1,0 +1,1 @@
+{"architecture": "arm64", "bios_target": null, "bootloaders": "grub-efi", "efi_suffix": "aa64", "efi_target": "arm64-efi", "kernel_flavour": "arm64", "packages": ["linux-image-arm64", "linux-headers-arm64", "fwupd-arm64-signed", "grub-efi-arm64-bin", "grub-efi-arm64-signed", "shim-signed"]}

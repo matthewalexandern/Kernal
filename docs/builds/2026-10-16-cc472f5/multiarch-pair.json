@@ -1,0 +1,32 @@
+{
+  "architectures": {
+    "amd64": {
+      "binary_iso": {
+        "file": "kythos-kernal-base-0.1.0-amd64.hybrid.iso",
+        "sha256": "06c0e9619de021daabd59b7e7f28ef5961aa4563a98aad7ad62f48001ea5ccf8"
+      },
+      "source_iso": {
+        "file": "kythos-kernal-base-0.1.0-source.iso",
+        "sha256": "dbc1e92bcc8bda363c5198dc81968d4f2a898a2544c85f101cff0c70753982d4"
+      },
+      "verified_artifacts": 28
+    },
+    "arm64": {
+      "binary_iso": {
+        "file": "kythos-kernal-base-0.1.0-arm64.hybrid.iso",
+        "sha256": "b27a511580222ecd16ec1806b385945dd2b67ab78ab9fa6a60c0ff4d69005646"
+      },
+      "source_iso": {
+        "file": "kythos-kernal-base-0.1.0-source.iso",
+        "sha256": "876d8c0008d37293bfa82c946de495cac5600e06eaa767f3bcd0fc88170c08e3"
+      },
+      "verified_artifacts": 28
+    }
+  },
+  "boot_validation": "not_assessed",
+  "debian_snapshot": "20261016T000000Z",
+  "recipe_sha256": "5dfa0862922c5434a9b5ff8403d648db5cd542b3c21332255482ea735bd64d87",
+  "result": "passed",
+  "source_date_epoch": "1792165132",
+  "source_git_commit": "cc472f571c2784a105ee12e5df408275ef14fa37"
+}

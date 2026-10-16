@@ -1,0 +1,97 @@
+{
+  "architecture": "amd64",
+  "build_environment": {
+    "LANG": "C.UTF-8",
+    "LC_ALL": "C.UTF-8",
+    "scope": "Disposable guest launcher only; tracked source unchanged."
+  },
+  "build_exit_code": 0,
+  "builder_distribution": "Debian 13 trixie",
+  "builder_execution": "qemu-kvm",
+  "cache_seed_scope": "package-archives-only; no reused chroot, native build or source index; no skipped gates",
+  "commit_scope": "The image source commit identifies the built code. This later evidence-only Git commit does not change either image source identity.",
+  "full_source_closure": {
+    "binary_pool_packages": 408,
+    "live_root_packages": 961,
+    "missing_source_tuples": 0,
+    "provided_source_tuples": 668,
+    "required_source_tuples": 666,
+    "source_payload_files_verified": 1409
+  },
+  "image_build_id": "20261016T153852Z",
+  "image_source_commit": "cc472f571c2784a105ee12e5df408275ef14fa37",
+  "images": [
+    {
+      "bytes": 2001469440,
+      "filename": "kythos-kernal-base-0.1.0-amd64.hybrid.iso",
+      "kind": "binary",
+      "sha256": "06c0e9619de021daabd59b7e7f28ef5961aa4563a98aad7ad62f48001ea5ccf8"
+    },
+    {
+      "bytes": 4343633920,
+      "filename": "kythos-kernal-base-0.1.0-source.iso",
+      "kind": "source",
+      "scope": "Complete source ISO accompanying this exact AMD64 binary; not ARM64 completion proof.",
+      "sha256": "dbc1e92bcc8bda363c5198dc81968d4f2a898a2544c85f101cff0c70753982d4"
+    }
+  ],
+  "launcher_build_run": "20261016T160258Z",
+  "original_metadata": {
+    "acceptance_alias": {
+      "original_filename": "acceptance.json",
+      "sha256": "ecc08718c0f7907ce27d0555d3a7a5717298eece0b9ef216bbf0511241382773"
+    },
+    "acceptance_credential_scan": {
+      "original_filename": "credential-scan.json",
+      "sha256": "52f5b2160712a0c613ce143b83913b7dcd5fc60c3e37589040b3b4a1e2a7c316"
+    },
+    "acceptance_evidence_manifest": {
+      "original_filename": "evidence-sha256.json",
+      "sha256": "299c44ba485bdbbda1fbbbffdce2e7739148214a5f49fdb9740f992137f085f6"
+    },
+    "artifact_manifest": {
+      "original_filename": "SHA256SUMS",
+      "sha256": "74afff233523ff3249a23efc74f9d04587dced7bdefd32d0ff66747b00081b03"
+    },
+    "build_provenance": {
+      "original_filename": "build-provenance.txt",
+      "sha256": "adf2b15c3e2a6d092d39a2e497e57e41332169502cf8a5528e94fce8e3828e56"
+    },
+    "builder_record": {
+      "original_filename": "build-info.json",
+      "sha256": "b44f78feb0401553cf669a36da4a44d1d187a6a19b85e6ecf9c8c10d6ba3985e"
+    },
+    "historical_failed_locale_comparison": {
+      "original_filename": "locale-real-input-comparison.json",
+      "sha256": "d70ef41f34d2ef5ecd244a72a728f79fe9d3166f3b657104530ace2d5675aab2"
+    },
+    "locale_environment_review": {
+      "original_filename": "explicit-build-locale-review-cc472f5.json",
+      "sha256": "c3866fcbd69303171ed697a5cb769a9709f6f588345fb25fd68dee420918ca46"
+    },
+    "native_acceptance": {
+      "original_filename": "native-acceptance-report.json",
+      "sha256": "ecc08718c0f7907ce27d0555d3a7a5717298eece0b9ef216bbf0511241382773"
+    },
+    "transfer_receipt": {
+      "original_filename": "TRANSFER-VERIFIED.json",
+      "sha256": "7b06aaaa27e6e3b41e38fa6bdacddd8d165a8f9774eb557aec2c8fd37840e1cb"
+    }
+  },
+  "pair_validation": {
+    "report": "../multiarch-pair.json",
+    "result": "passed",
+    "verified_artifacts_per_architecture": 28
+  },
+  "recipe_internal_run_id": "20261016T160316Z",
+  "recipe_manifest_files_verified_against_exact_git_tree": 186,
+  "remaining_validation": [
+    "Physical hardware and formal FIPS/STIG acceptance are not established."
+  ],
+  "schema": 1,
+  "snapshot": "20261016T000000Z",
+  "source_bundle_sha256": "902c6a642d846b04e49e97dcf7ebb9565a452c8e8b74cf17810a9f61afc65a71",
+  "source_bundle_verified_locally": true,
+  "source_date_epoch": 1792165132,
+  "status": "verified-build-and-native-installation"
+}

@@ -1,0 +1,15 @@
+{
+  "architecture": "arm64",
+  "build_run": "20261016T160307Z",
+  "final_review": "Original full transfer receipt verified all 28 artifact bytes; the final pair gate independently rehashed both complete artifact sets. Small committed metadata and exact recipe files were also checked against their original records.",
+  "image_source_commit": "cc472f571c2784a105ee12e5df408275ef14fa37",
+  "manifest_sha256": "c22dfe65e84d92f09e6b453121ce3e876cbf2acf2f643cfeb6946d5af026fa04",
+  "missing_source_tuples": 0,
+  "original_receipt_sha256": "83ea03e4906c10806a1f4fe47dcadc82d39f146d44994580f8045926f98ce347",
+  "pair_report": "../multiarch-pair.json",
+  "schema": 1,
+  "source_bundle_sha256": "902c6a642d846b04e49e97dcf7ebb9565a452c8e8b74cf17810a9f61afc65a71",
+  "source_date_epoch": 1792165132,
+  "verification": "guest manifest checked before and unchanged after; all destination files independently read back and hashed",
+  "verified_manifest_artifacts": 28
+}

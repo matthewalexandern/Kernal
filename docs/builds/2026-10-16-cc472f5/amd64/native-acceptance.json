@@ -1,0 +1,72 @@
+{
+  "acceptance_harness": {
+    "initial_assertion_failures_this_run": 0,
+    "natural_usb_probe_error_count": 0,
+    "note": "Observer was corrected before this new run to allow clean native USB binding; a controlled priority3 fixture is always required. No native fixture repetition or test bypass occurred.",
+    "result": "PASS"
+  },
+  "acceptance_run": "20261016T161323Z",
+  "acceptance_scope": "Fresh AMD64 native acceptance for the exact recorded binary; final artifact/source pair verification is documented separately in ../multiarch-pair.json. Git delivery and any public release are separate actions.",
+  "binary_bytes": 2001469440,
+  "binary_filename": "kythos-kernal-base-0.1.0-amd64.hybrid.iso",
+  "binary_sha256": "06c0e9619de021daabd59b7e7f28ef5961aa4563a98aad7ad62f48001ea5ccf8",
+  "build_run": "20261016T160258Z",
+  "checks": {
+    "command_help_and_readline": {
+      "result": "PASS",
+      "scope": "Native F1 systemctl and cy metadata; tar --extrcat preview/Tab insertion cancelled; sshcopyid preview/Right insertion cancelled; show network status preview/Tab insertion then ordinary Enter executed read-only nmcli general status once; Up/Down history retained"
+    },
+    "console_font_color_fullscreen": {
+      "result": "PASS",
+      "scope": "Original stock 8x16x256 font; nonbold periwinkle RGB158,175,255; exact header; first fast top/q, ordinary top with two refreshes/q, clear/ip/nmcli; raw original-user physical tty and managed header reentry; header pixels identical without forced redraw"
+    },
+    "installed_baseline": {
+      "result": "PASS",
+      "scope": "Installed Secure Boot enabled, EFI/encrypted-root receipt, exact hostname/issue, ordinary administrator PATH, cy help, maintained HTTPS repositories only, actual cy update exit0, 12 public runtime files match exact cc Git tree"
+    },
+    "kernel_console": {
+      "result": "PASS",
+      "scope": "Pristine replacement160258 boot automatically owned tty12 before getty; no manual apply/restart/restore. Fresh actual USB cdc_ether hotplug and one labelled public priority3 kmsg fixture preserve tty1 VCS/header pixels; fixture retained in journal/dmesg and physically visible tty12. Printk remains4 4 1 7; physical VT12 switch/back succeeds. USB bound cleanly with no natural probe error; controlled priority3 fixture tests the error-message path independently."
+    },
+    "native_install": {
+      "layout": "GPT; 512MiB FAT32 ESP /boot/efi; 2GiB ext4 /boot; remaining LUKS2 ext4 root; no swap",
+      "restart": "Genuine All done, Restart now selected, Done, normal restart, LUKS unlock and ordinary login; no QMP reset",
+      "result": "PASS",
+      "scope": "Actual native Calamares full install from blank owned 32GiB disk; no fixture installer bypass"
+    },
+    "network": {
+      "result": "PASS",
+      "scope": "Both initial Ethernet adapters automatically DHCP+DNS simultaneously; new cdc_ether USB automatically DHCP+DNS without activation/modification; explicit priority100 IPv4 manual profile survives NetworkManager reload and 8-second QMP carrier cycle while original DHCP and USB stay active"
+    },
+    "shutdown_cleanup": {
+      "result": "PASS",
+      "scope": "Ordinary guest poweroff observed inactive/PID0 before harness cleanup; only owned disk/vars/socket/private fixture removed; retained artifacts credential scan zero; original ISO read-back unchanged"
+    }
+  },
+  "cleanup": {
+    "credential_matches": 0,
+    "disk_removed": true,
+    "normal_guest_poweroff": true,
+    "original_iso_byte_identical": true,
+    "private_fixture_removed": true,
+    "scanned_retained_files": 143,
+    "status": "cleaned",
+    "vars_socket_removed": true
+  },
+  "completed_at": "2026-10-16T16:22:14.181591+00:00",
+  "evidence_capture_count": 61,
+  "hardware": "QEMU x86_64 q35/KVM, OVMF UEFI Secure Boot, 4GiB RAM, blank32GiB virtio disk, virtio/e1000e Ethernet plus actual USB cdc_ether",
+  "image_source_commit": "cc472f571c2784a105ee12e5df408275ef14fa37",
+  "limitations": [
+    "QEMU amd64 UEFI acceptance; no physical NVIDIA, Wi-Fi, TPM, FIDO2-key, ARM64 hardware or FIPS certification acceptance.",
+    "Serial kernel message preservation is structural/source-reviewed; this guest kernel console was tty0, so live serial routing was not exercised.",
+    "Earlier 0dab/65/720 runs are historical/incomplete or postinstall previews and are not promoted by this report."
+  ],
+  "original_acceptance_sha256": "ecc08718c0f7907ce27d0555d3a7a5717298eece0b9ef216bbf0511241382773",
+  "original_evidence_manifest_sha256": "299c44ba485bdbbda1fbbbffdce2e7739148214a5f49fdb9740f992137f085f6",
+  "result": "passed",
+  "runtime_scope": "Fresh exact replacement160258 candidate installation, no postinstall product patches, no manual kernel redirect apply/restart/restore and no forced tmux redraw. Public test probes, one explicitly labelled priority3 kernel fixture and a temporary test static Ethernet profile were used.",
+  "schema": 1,
+  "source_date_epoch": 1792165132,
+  "status": "amd64-native-acceptance-only"
+}

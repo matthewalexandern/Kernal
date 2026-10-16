@@ -1,0 +1,9 @@
+binary_disk_info=KythOS Kernal 0.1.0 arm64 Binary
+source_disk_info=KythOS Kernal 0.1.0 arm64 source
+build_id=20261016T153852Z
+debian_architecture=arm64
+os_id=kythos
+os_id_like=debian
+dpkg_vendor=KythOS
+dpkg_parent=Debian
+license_copies=verified

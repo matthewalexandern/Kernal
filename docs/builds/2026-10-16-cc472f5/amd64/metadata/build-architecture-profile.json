@@ -1,0 +1,1 @@
+{"architecture": "amd64", "bios_target": "i386-pc", "bootloaders": "syslinux,grub-efi", "efi_suffix": "x64", "efi_target": "x86_64-efi", "kernel_flavour": "amd64", "packages": ["linux-image-amd64", "linux-headers-amd64", "amd64-microcode", "intel-microcode", "fwupd-amd64-signed", "grub-pc-bin", "grub-efi-amd64-bin", "grub-efi-amd64-signed", "shim-signed"]}

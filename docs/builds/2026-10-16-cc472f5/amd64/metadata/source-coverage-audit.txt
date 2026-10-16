@@ -1,0 +1,6 @@
+binary_pool_packages=408
+live_root_packages=961
+required_source_tuples=666
+provided_source_tuples=668
+source_payload_files_verified=1409
+missing_source_tuples=0
