@@ -1,0 +1,7 @@
+# Password-capable SSH. The common nftables policy still exposes no port.
+openssh-server
+
+# TPM2-bound LUKS unlocking through Debian's initramfs-tools integration.
+# cryptsetup-initramfs is listed with the other storage packages.
+clevis-initramfs
+clevis-tpm2

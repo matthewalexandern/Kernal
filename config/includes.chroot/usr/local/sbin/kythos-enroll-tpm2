@@ -1,0 +1,796 @@
+#!/bin/sh
+set -eu
+umask 077
+
+state_directory=/var/lib/kythos
+prepare_marker=$state_directory/tpm2-enrollment-prepared
+pcr_policy='{"hash":"sha256","key":"ecc","pcr_bank":"sha256","pcr_ids":"4,7,8,9,14"}'
+
+usage()
+{
+    cat >&2 <<'EOF'
+Usage:
+  kythos-enroll-tpm2 --prepare
+  kythos-enroll-tpm2 LUKS_DEVICE RECOVERY_KEY_FILE
+  kythos-enroll-tpm2 --rebind LUKS_DEVICE RECOVERY_KEY_FILE
+
+First run --prepare, reboot with the LUKS passphrase, and then run the enroll
+form. The rebind form reseals an existing TPM binding after a trusted boot.
+Both forms bind the disk key to the measured UEFI Secure Boot path and keep
+the original passphrase plus the offline recovery key. RECOVERY_KEY_FILE must
+be on separately mounted removable storage with a different backing device.
+
+After enrollment, treat an unexpected boot-time passphrase prompt as a
+possible boot-integrity failure. Power off and inspect from trusted media.
+EOF
+    exit 2
+}
+
+die()
+{
+    printf 'kythos-enroll-tpm2: %s\n' "$*" >&2
+    exit 1
+}
+
+require_root_installed_system()
+{
+    test "$(id -u)" -eq 0 || die 'run this command as root'
+    test ! -e /run/live/medium && test ! -e /run/live/overlay \
+        || die 'TPM enrollment must run on the installed system'
+    test -d /sys/firmware/efi \
+        || die 'measured TPM enrollment requires a UEFI boot'
+}
+
+require_commands()
+{
+    for command_name
+    do
+        command -v "$command_name" >/dev/null 2>&1 \
+            || die "required command is unavailable: $command_name"
+    done
+}
+
+check_boot_mounts()
+{
+    test -d /boot || die '/boot is unavailable'
+    test -d /boot/efi || die '/boot/efi is unavailable'
+    test -r /etc/fstab || die '/etc/fstab is unavailable'
+    configured_mounts=$(findmnt --fstab -rn -o TARGET 2>/dev/null) \
+        || die 'cannot parse configured filesystems'
+    for expected_mount in /boot /boot/efi
+    do
+        if printf '%s\n' "$configured_mounts" | grep -Fxq "$expected_mount"; then
+            mountpoint -q "$expected_mount" \
+                || die "$expected_mount is configured but not mounted"
+        fi
+    done
+    mountpoint -q /boot/efi \
+        || die 'measured TPM enrollment requires the EFI System Partition mounted at /boot/efi'
+    test -d /boot/efi/EFI \
+        || die 'the mounted EFI System Partition has no EFI directory'
+}
+
+snapshot_tree_digest()
+{
+    snapshot_tree=$1
+    boot_snapshot=$(mktemp)
+    if ! LC_ALL=C tar --sort=name --format=gnu --numeric-owner \
+        --one-file-system --mtime=@0 --exclude='./grub/grubenv' \
+        -C "$snapshot_tree" -cf "$boot_snapshot" .; then
+        rm -f -- "$boot_snapshot"
+        boot_snapshot=
+        die "cannot snapshot $snapshot_tree"
+    fi
+    snapshot_digest=$(sha256sum "$boot_snapshot" | awk '{ print $1 }')
+    printf '%s\n' "$snapshot_digest" | grep -Eq '^[0-9a-f]{64}$' \
+        || die "cannot hash $snapshot_tree"
+    rm -f -- "$boot_snapshot"
+    boot_snapshot=
+    printf '%s\n' "$snapshot_digest"
+}
+
+create_boot_digest()
+{
+    check_boot_mounts
+    boot_tree_digest=$(snapshot_tree_digest /boot)
+    efi_tree_digest=$(snapshot_tree_digest /boot/efi)
+    combined_boot_digest=$(
+        printf 'boot=%s\nefi=%s\n' "$boot_tree_digest" "$efi_tree_digest" \
+            | sha256sum | awk '{ print $1 }'
+    )
+    printf '%s\n' "$combined_boot_digest" | grep -Eq '^[0-9a-f]{64}$' \
+        || die 'cannot hash the combined boot snapshot'
+    printf '%s\n' "$combined_boot_digest"
+}
+
+check_prepared_boot_state()
+{
+    current_boot_digest=$(create_boot_digest)
+    test "$current_boot_digest" = "$prepared_boot_digest" \
+        || die 'boot content differs from the prepared snapshot; prepare and reboot again'
+}
+
+check_recovery_media()
+{
+    recovery_mount=$(findmnt -rn -o TARGET --target "$recovery_directory") \
+        || die 'cannot resolve the recovery destination mount'
+    case "$recovery_mount" in
+        /|/boot|/boot/efi)
+            die 'recovery output must use a separately mounted removable filesystem'
+            ;;
+        *\\*)
+            die 'escaped characters in the recovery mount path are unsupported'
+            ;;
+    esac
+    mountpoint -q "$recovery_mount" \
+        || die 'recovery output is not on a distinct mounted filesystem'
+
+    recovery_mount_options=$(findmnt -rn -o OPTIONS --target "$recovery_directory") \
+        || die 'cannot read recovery mount options'
+    case ",$recovery_mount_options," in
+        *,rw,*) ;;
+        *) die 'recovery media must be mounted read-write' ;;
+    esac
+
+    recovery_block_device=$(findmnt -rn -o SOURCE --target "$recovery_directory") \
+        || die 'cannot identify recovery storage'
+    case "$recovery_block_device" in
+        /dev/*) ;;
+        *) die 'recovery output must use removable block storage' ;;
+    esac
+    case "$recovery_block_device" in
+        *'['*) die 'bind-mounted recovery paths are not accepted' ;;
+    esac
+    recovery_block_device=$(readlink -f -- "$recovery_block_device") \
+        || die 'cannot resolve the recovery block device'
+    test -b "$recovery_block_device" \
+        || die 'recovery mount source is not a block device'
+
+    if ! lsblk -srno RM,TRAN "$recovery_block_device" \
+        | awk '$1 == "1" || $2 ~ /^(usb|firewire|ieee1394)$/ { found=1 }
+               END { exit(found ? 0 : 1) }'; then
+        die 'recovery storage is not reported as removable or externally transported'
+    fi
+
+    raw_luks_device_chain=$(lsblk -srno MAJ:MIN "$device") \
+        || die 'cannot resolve the LUKS backing-device chain'
+    raw_recovery_device_chain=$(lsblk -srno MAJ:MIN "$recovery_block_device") \
+        || die 'cannot resolve the recovery backing-device chain'
+    test -n "$raw_luks_device_chain" && test -n "$raw_recovery_device_chain" \
+        || die 'a backing-device chain is empty'
+    if printf '%s\n%s\n' "$raw_luks_device_chain" \
+        "$raw_recovery_device_chain" \
+        | grep -Evq '^[0-9]+:[0-9]+$'; then
+        die 'a backing-device identifier is malformed'
+    fi
+    luks_device_chain=$(printf '%s\n' "$raw_luks_device_chain" \
+        | LC_ALL=C sort -u) || die 'cannot normalize the LUKS device chain'
+    recovery_device_chain=$(printf '%s\n' "$raw_recovery_device_chain" \
+        | LC_ALL=C sort -u) || die 'cannot normalize the recovery device chain'
+    for block_id in $luks_device_chain
+    do
+        if printf '%s\n' "$recovery_device_chain" | grep -Fxq "$block_id"; then
+            die 'recovery storage shares a backing device with the LUKS volume'
+        fi
+    done
+}
+
+pin_recovery_media()
+{
+    expected_recovery_mount=$recovery_mount
+    expected_recovery_mount_id=$(findmnt -rn -o ID \
+        --target "$recovery_directory") \
+        || die 'cannot identify the recovery filesystem mount'
+    expected_recovery_mount_unique_id=$(findmnt --kernel=listmount -rn \
+        -o UNIQ-ID --target "$recovery_directory") \
+        || die 'cannot read the recovery filesystem unique mount ID'
+    printf '%s\n' "$expected_recovery_mount_unique_id" \
+        | grep -Eq '^[1-9][0-9]*$' \
+        || die 'the kernel did not provide a unique recovery mount ID'
+    expected_recovery_block_device=$recovery_block_device
+    expected_recovery_directory_identity=$(stat -Lc '%d:%i' \
+        -- "$recovery_directory") \
+        || die 'cannot identify the recovery directory'
+    expected_recovery_block_identity=$(stat -Lc '%t:%T' \
+        -- "$recovery_block_device") \
+        || die 'cannot identify the recovery block device'
+
+    # Keep open references to both the checked directory and block device. All
+    # recovery writes and flushes use these descriptors, so a lazy unmount,
+    # remount, or /dev path reuse cannot redirect the transaction.
+    exec 8< "$recovery_directory" \
+        || die 'cannot pin the recovery directory'
+    exec 9< "$recovery_block_device" \
+        || die 'cannot pin the recovery block device'
+    recovery_fd_directory=/proc/$$/fd/8
+    recovery_fd_block=/proc/$$/fd/9
+    test "$(stat -Lc '%d:%i' -- "$recovery_fd_directory")" \
+        = "$expected_recovery_directory_identity" \
+        || die 'recovery directory changed while it was being pinned'
+    test "$(stat -Lc '%t:%T' -- "$recovery_fd_block")" \
+        = "$expected_recovery_block_identity" \
+        || die 'recovery block device changed while it was being pinned'
+    test "$(findmnt --kernel=listmount -rn -o UNIQ-ID \
+        --target "$recovery_fd_directory")" \
+        = "$expected_recovery_mount_unique_id" \
+        || die 'recovery filesystem changed while it was being pinned'
+    recovery_pinned=true
+    check_pinned_recovery_media
+}
+
+check_pinned_recovery_media()
+{
+    test "$recovery_pinned" = true \
+        || die 'recovery media is not pinned'
+    check_protected_directory_chain "$recovery_directory"
+    check_recovery_media
+    current_recovery_mount_id=$(findmnt -rn -o ID \
+        --target "$recovery_directory") \
+        || die 'cannot recheck the recovery filesystem mount'
+    current_recovery_mount_unique_id=$(findmnt --kernel=listmount -rn \
+        -o UNIQ-ID --target "$recovery_directory") \
+        || die 'cannot recheck the recovery filesystem unique mount ID'
+    current_recovery_directory_identity=$(stat -Lc '%d:%i' \
+        -- "$recovery_directory") \
+        || die 'cannot recheck the recovery directory'
+    current_recovery_block_identity=$(stat -Lc '%t:%T' \
+        -- "$recovery_block_device") \
+        || die 'cannot recheck the recovery block device'
+
+    test "$recovery_mount" = "$expected_recovery_mount" \
+        && test "$current_recovery_mount_id" = "$expected_recovery_mount_id" \
+        && test "$current_recovery_mount_unique_id" \
+            = "$expected_recovery_mount_unique_id" \
+        && test "$recovery_block_device" \
+            = "$expected_recovery_block_device" \
+        && test "$current_recovery_directory_identity" \
+            = "$expected_recovery_directory_identity" \
+        && test "$current_recovery_block_identity" \
+            = "$expected_recovery_block_identity" \
+        && test "$(stat -Lc '%d:%i' -- "$recovery_fd_directory")" \
+            = "$expected_recovery_directory_identity" \
+        && test "$(stat -Lc '%t:%T' -- "$recovery_fd_block")" \
+            = "$expected_recovery_block_identity" \
+        && test "$(findmnt --kernel=listmount -rn -o UNIQ-ID \
+            --target "$recovery_fd_directory")" \
+            = "$expected_recovery_mount_unique_id" \
+        || die 'recovery storage changed during the enrollment transaction'
+}
+
+check_protected_directory_chain()
+{
+    checked_directory=$1
+
+    while :; do
+        test ! -L "$checked_directory" \
+            || die "directory path must not contain symlinks: $checked_directory"
+        test -d "$checked_directory" \
+            || die "not a directory: $checked_directory"
+        directory_owner=$(stat -Lc '%u' -- "$checked_directory") \
+            || die "cannot read ownership for $checked_directory"
+        test "$directory_owner" -eq 0 \
+            || die "directory must be owned by root: $checked_directory"
+        directory_mode=$(stat -Lc '%a' -- "$checked_directory") \
+            || die "cannot read permissions for $checked_directory"
+        directory_bits=$((0$directory_mode))
+        test $((directory_bits & 0022)) -eq 0 \
+            || die "directory must not be writable by group or others: $checked_directory"
+
+        test "$checked_directory" != / || break
+        checked_directory=$(dirname -- "$checked_directory")
+    done
+}
+
+check_secure_recovery_file()
+{
+    checked_recovery_file=$1
+    test -f "$checked_recovery_file" && test ! -L "$checked_recovery_file" \
+        || die "recovery key is not a regular file: $recovery_file"
+    test "$(stat -Lc '%u %a %h' -- "$checked_recovery_file")" = '0 600 1' \
+        || die 'recovery file ownership, mode, or link count is unsafe'
+    test "$(wc -c < "$checked_recovery_file")" -eq 64 \
+        || die 'recovery key must contain exactly 64 hexadecimal characters'
+    LC_ALL=C grep -Eq '^[0-9a-fA-F]{64}$' "$checked_recovery_file" \
+        || die 'recovery key is not hexadecimal'
+}
+
+list_tpm_slots()
+{
+    clevis_list=$(clevis luks list -d "$device" 2>/dev/null) \
+        || die 'cannot enumerate existing Clevis LUKS bindings'
+    if printf '%s\n' "$clevis_list" \
+        | grep -Evq \
+            '^[[:space:]]*$|^[[:space:]]*[0-9]+:[[:space:]]+[[:alnum:]_-]+[[:space:]]+'; then
+        die 'Clevis returned an unrecognized binding list'
+    else
+        grep_status=$?
+        test "$grep_status" -eq 1 \
+            || die 'cannot validate the Clevis binding list'
+    fi
+    printf '%s\n' "$clevis_list" \
+        | sed -nE \
+            's/^[[:space:]]*([0-9]+):[[:space:]]+tpm2[[:space:]].*/\1/p'
+}
+
+cleanup_recovery=false
+event_dump=
+header_temporary=
+boot_snapshot=
+marker_temporary=
+rollback_header=
+rollback_required=false
+published_header=false
+preserve_rollback=false
+recovery_pinned=false
+recovery_fd_directory=
+recovery_fd_block=
+recovery_file_path=
+header_file_path=
+rollback_header_display=
+recovery_temporary=
+cleanup_status=0
+termination_signal_cleanup_action='trap "" HUP INT QUIT ILL TRAP ABRT BUS FPE USR1 SEGV USR2 PIPE ALRM TERM 16 XCPU XFSZ VTALRM PROF IO PWR SYS; trap - EXIT; cleanup'
+
+# The static action is deliberately expanded while each trap is installed.
+# shellcheck disable=SC2064
+arm_termination_traps()
+{
+    # First make setup interruption harmless. Each installed action then makes
+    # every fatal signal ignored as its first command, before EXIT cleanup can
+    # begin, so a second queued signal cannot interrupt header rollback.
+    ignore_termination_signals
+    trap "$termination_signal_cleanup_action 129; exit 129" HUP
+    trap "$termination_signal_cleanup_action 130; exit 130" INT
+    trap "$termination_signal_cleanup_action 131; exit 131" QUIT
+    trap "$termination_signal_cleanup_action 132; exit 132" ILL
+    trap "$termination_signal_cleanup_action 133; exit 133" TRAP
+    trap "$termination_signal_cleanup_action 134; exit 134" ABRT
+    trap "$termination_signal_cleanup_action 135; exit 135" BUS
+    trap "$termination_signal_cleanup_action 136; exit 136" FPE
+    trap "$termination_signal_cleanup_action 138; exit 138" USR1
+    trap "$termination_signal_cleanup_action 139; exit 139" SEGV
+    trap "$termination_signal_cleanup_action 140; exit 140" USR2
+    trap "$termination_signal_cleanup_action 141; exit 141" PIPE
+    trap "$termination_signal_cleanup_action 142; exit 142" ALRM
+    trap "$termination_signal_cleanup_action 143; exit 143" TERM
+    # dash accepts Linux SIGSTKFLT only by number.
+    # shellcheck disable=SC2172
+    trap "$termination_signal_cleanup_action 144; exit 144" 16
+    trap "$termination_signal_cleanup_action 152; exit 152" XCPU
+    trap "$termination_signal_cleanup_action 153; exit 153" XFSZ
+    trap "$termination_signal_cleanup_action 154; exit 154" VTALRM
+    trap "$termination_signal_cleanup_action 155; exit 155" PROF
+    trap "$termination_signal_cleanup_action 157; exit 157" IO
+    trap "$termination_signal_cleanup_action 158; exit 158" PWR
+    trap "$termination_signal_cleanup_action 159; exit 159" SYS
+}
+
+ignore_termination_signals()
+{
+    # dash accepts Linux SIGSTKFLT only by number.
+    # shellcheck disable=SC2172
+    trap '' HUP INT QUIT ILL TRAP ABRT BUS FPE USR1 SEGV USR2 PIPE ALRM TERM 16 XCPU XFSZ VTALRM PROF IO PWR SYS
+}
+
+clear_traps()
+{
+    trap - EXIT HUP INT QUIT ILL TRAP ABRT BUS FPE USR1 SEGV USR2 PIPE ALRM TERM 16 XCPU XFSZ VTALRM PROF IO PWR SYS
+}
+
+cleanup()
+{
+    cleanup_status=$1
+    # Cleanup must complete even if another termination signal arrives or a
+    # diagnostic stream is unavailable.
+    ignore_termination_signals
+    test -z "$event_dump" || rm -f -- "$event_dump" || :
+    test -z "$header_temporary" || rm -f -- "$header_temporary" || :
+    test -z "$boot_snapshot" || rm -f -- "$boot_snapshot" || :
+    test -z "$marker_temporary" || rm -f -- "$marker_temporary" || :
+    test -z "$recovery_temporary" || rm -f -- "$recovery_temporary" || :
+
+    if test "$rollback_required" = true; then
+        printf '%s\n' \
+            'Enrollment did not commit; restoring the pre-operation LUKS2 header.' >&2 \
+            || :
+        if test -n "$rollback_header" && test -f "$rollback_header" \
+            && test ! -L "$rollback_header" \
+            && cryptsetup luksHeaderRestore --batch-mode "$device" \
+                --header-backup-file "$rollback_header"; then
+            printf '%s\n' 'Pre-operation LUKS2 header restored.' >&2 || :
+            if test "$published_header" = true; then
+                if ! rm -f -- "$header_file_path"; then
+                    printf 'WARNING: remove the uncommitted header backup manually: %s\n' \
+                        "$header_file" >&2 || :
+                fi
+            fi
+        else
+            preserve_rollback=true
+            cleanup_recovery=false
+            printf '%s\n' \
+                'CRITICAL: automatic LUKS2 header rollback failed.' >&2 || :
+            printf 'Preserve the recovery key and restore this header from trusted media: %s\n' \
+                "$rollback_header_display" >&2 || :
+        fi
+    fi
+
+    if test "$cleanup_recovery" = true; then
+        if ! rm -f -- "$recovery_file_path"; then
+            printf 'WARNING: remove the uncommitted recovery key manually: %s\n' \
+                "$recovery_file" >&2 || :
+        fi
+    fi
+    if test "$preserve_rollback" != true && test -n "$rollback_header"; then
+        if ! rm -f -- "$rollback_header"; then
+            printf 'WARNING: remove the temporary rollback header manually: %s\n' \
+                "$rollback_header_display" >&2 || :
+        fi
+    fi
+    return "$cleanup_status"
+}
+trap 'cleanup "$?"' EXIT
+arm_termination_traps
+
+if test "${1:-}" = --prepare; then
+    test "$#" -eq 1 || usage
+    require_root_installed_system
+    require_commands date findmnt grep install mktemp mokutil mountpoint mv \
+        sha256sum tar update-grub update-initramfs
+    mokutil --sb-state 2>/dev/null | grep -Fq 'SecureBoot enabled' \
+        || die 'Secure Boot must be enabled before preparing TPM enrollment'
+
+    # Build every initramfs and GRUB configuration before rebooting. The later
+    # seal uses PCR 9, so changing either artifact after sealing would make the
+    # next automatic unlock fail safely back to the passphrase prompt.
+    update-initramfs -u -k all
+    update-grub
+    prepared_boot_digest=$(create_boot_digest)
+    install -d -o root -g root -m 0700 "$state_directory"
+    marker_temporary=$(mktemp "$state_directory/.tpm2-prepared.XXXXXXXXXX")
+    {
+        printf 'prepared_boot_id=%s\n' "$(cat /proc/sys/kernel/random/boot_id)"
+        printf 'prepared_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        printf 'prepared_boot_digest=%s\n' "$prepared_boot_digest"
+    } > "$marker_temporary"
+    chmod 0600 "$marker_temporary"
+    chown root:root "$marker_temporary"
+    mv -f -- "$marker_temporary" "$prepare_marker"
+    marker_temporary=
+    printf '%s\n' 'TPM enrollment preparation completed.'
+    printf '%s\n' 'Reboot, unlock once with the LUKS passphrase, then run the enrollment command.'
+    clear_traps
+    exit 0
+fi
+
+mode=enroll
+if test "${1:-}" = --rebind; then
+    mode=rebind
+    shift
+fi
+test "$#" -eq 2 || usage
+require_root_installed_system
+require_commands awk blockdev clevis cryptsetup date find findmnt flock grep \
+    install lsblk mktemp mokutil mountpoint mv od readlink sed sha256sum sort stat sync tar \
+    tpm2_eventlog tpm2_getcap tpm2_pcrread tr wc
+
+device=$1
+recovery_file=$2
+
+case "$device" in
+    /dev/*) ;;
+    *) die 'LUKS_DEVICE must be an explicit path below /dev' ;;
+esac
+device=$(readlink -f -- "$device") || die 'cannot resolve the LUKS device'
+case "$device" in
+    /dev/*) ;;
+    *) die 'the resolved LUKS device is outside /dev' ;;
+esac
+test -b "$device" || die "$device is not a block device"
+
+test ! -L /run/kythos || die '/run/kythos must not be a symlink'
+install -d -o root -g root -m 0700 /run/kythos
+check_protected_directory_chain /run/kythos
+device_lock_identity=$(stat -Lc '%t-%T' -- "$device") \
+    || die 'cannot identify the LUKS device for locking'
+device_lock=/run/kythos/tpm2-enrollment-$device_lock_identity.lock
+exec 7> "$device_lock" || die 'cannot open the TPM enrollment lock'
+chmod 0600 "$device_lock"
+test -f "$device_lock" && test ! -L "$device_lock" \
+    && test "$(stat -Lc '%u %a %h' -- "$device_lock")" = '0 600 1' \
+    || die 'TPM enrollment lock ownership, mode, or link count is unsafe'
+flock -n 7 \
+    || die 'another KythOS TPM enrollment transaction is using this LUKS device'
+
+case "$recovery_file" in
+    /*) ;;
+    *) die 'RECOVERY_KEY_FILE must be an absolute path' ;;
+esac
+# Canonicalize dot components and any existing directory symlinks before the
+# privileged path checks, then use only this canonical path for all writes.
+recovery_file=$(readlink -m -- "$recovery_file") \
+    || die 'cannot normalize the recovery key destination'
+recovery_directory=$(dirname -- "$recovery_file")
+check_protected_directory_chain "$recovery_directory"
+
+if test "$mode" = enroll; then
+    header_file=${recovery_file}.luks-header
+    test ! -e "$recovery_file" && test ! -L "$recovery_file" \
+        || die "$recovery_file already exists; use --rebind for an existing recovery key"
+else
+    check_secure_recovery_file "$recovery_file"
+    header_file=${recovery_file}.luks-header.rebind-$(date -u +%Y%m%dT%H%M%SZ)-$$
+fi
+test ! -e "$header_file" && test ! -L "$header_file" \
+    || die "$header_file already exists"
+
+create_rollback_header()
+{
+    check_pinned_recovery_media
+    rollback_header=$(mktemp -p "$recovery_fd_directory" \
+        '.kythos-luks-header.rollback.XXXXXXXXXX') \
+        || die 'could not reserve a transactional header-backup name'
+    rollback_header_display=$recovery_directory/${rollback_header##*/}
+    rm -f -- "$rollback_header"
+    cryptsetup luksHeaderBackup "$device" \
+        --header-backup-file "$rollback_header"
+    chmod 0600 "$rollback_header"
+    test -f "$rollback_header" && test ! -L "$rollback_header" \
+        && test "$(stat -Lc '%u %a %h' -- "$rollback_header")" = '0 600 1' \
+        || die 'transactional header backup ownership, mode, or link count is unsafe'
+    sync -f "$rollback_header"
+    sync -f "$recovery_fd_directory"
+    blockdev --flushbufs "$recovery_fd_block"
+    printf 'Temporary rollback header: %s\n' "$rollback_header_display"
+}
+
+cryptsetup isLuks "$device" || die "$device is not a LUKS volume"
+luks_version=$(cryptsetup luksDump "$device" \
+    | awk '$1 == "Version:" { print $2; exit }')
+test "$luks_version" = 2 || die 'TPM enrollment requires LUKS2'
+check_recovery_media
+pin_recovery_media
+recovery_file_path=$recovery_fd_directory/${recovery_file##*/}
+header_file_path=$recovery_fd_directory/${header_file##*/}
+if test "$mode" = rebind; then
+    check_secure_recovery_file "$recovery_file_path"
+fi
+test ! -e "$header_file_path" && test ! -L "$header_file_path" \
+    || die "$header_file appeared while recovery media was being pinned"
+
+if test ! -c /dev/tpmrm0 && test ! -c /dev/tpm0; then
+    die 'no TPM2 device is available'
+fi
+tpm2_getcap properties-fixed >/dev/null 2>&1 \
+    || die 'the TPM2 device did not answer a capability query'
+mokutil --sb-state 2>/dev/null | grep -Fq 'SecureBoot enabled' \
+    || die 'Secure Boot must be enabled before binding measured PCRs'
+
+test -f "$prepare_marker" && test ! -L "$prepare_marker" \
+    && test "$(stat -Lc '%u %a %h' -- "$prepare_marker")" = '0 600 1' \
+    || die 'run kythos-enroll-tpm2 --prepare and reboot before enrollment'
+prepared_boot_id=$(sed -n 's/^prepared_boot_id=//p' "$prepare_marker")
+prepared_boot_digest=$(sed -n 's/^prepared_boot_digest=//p' "$prepare_marker")
+current_boot_id=$(cat /proc/sys/kernel/random/boot_id)
+test -n "$prepared_boot_id" && test "$prepared_boot_id" != "$current_boot_id" \
+    || die 'reboot after kythos-enroll-tpm2 --prepare before enrollment'
+printf '%s\n' "$prepared_boot_digest" | grep -Eq '^[0-9a-f]{64}$' \
+    || die 'the preparation marker has no valid boot snapshot digest'
+check_prepared_boot_state
+
+pcr_output=$(tpm2_pcrread 'sha256:4,7,8,9,14') \
+    || die 'cannot read the required SHA-256 PCR bank'
+printf '%s\n' 'Measured boot PCR state used for this binding:'
+printf '%s\n' "$pcr_output"
+for measured_pcr in 4 7 8 9 14
+do
+    pcr_value=$(printf '%s\n' "$pcr_output" \
+        | awk -v wanted="$measured_pcr" \
+            '$1 == wanted && $2 == ":" { print $3; exit }')
+    pcr_hex=${pcr_value#0x}
+    printf '%s\n' "$pcr_hex" | grep -Eq '^[0-9a-fA-F]{64}$' \
+        || die "PCR $measured_pcr is unavailable in the SHA-256 bank"
+    printf '%s\n' "$pcr_hex" | grep -Eq '[1-9a-fA-F]' \
+        || die "PCR $measured_pcr is unmeasured; GRUB TPM measurement is required"
+done
+
+event_log=/sys/kernel/security/tpm0/binary_bios_measurements
+test -r "$event_log" || die 'the TPM event log is unavailable'
+event_dump=$(mktemp)
+tpm2_eventlog --eventlog-version=1 "$event_log" > "$event_dump" \
+    || die 'the TPM event log cannot be decoded'
+for measured_pcr in 4 7 8 9 14
+do
+    awk -v wanted="$measured_pcr" '
+        BEGIN { RS="- EventNum:" }
+        $0 ~ ("PCRIndex:[[:space:]]*" wanted "([[:space:]]|$)") &&
+        $0 ~ /AlgorithmId:[[:space:]]*sha256([[:space:]]|$)/ { found=1 }
+        END { exit(found ? 0 : 1) }
+    ' "$event_dump" \
+        || die "the event log contains no SHA-256 PCR $measured_pcr measurement"
+
+    replayed_pcr=$(awk -v wanted="$measured_pcr" '
+        /^pcrs:[[:space:]]*$/ { in_pcrs=1; next }
+        in_pcrs && /^  sha256:[[:space:]]*$/ { in_sha256=1; next }
+        in_sha256 && /^  [^[:space:]]/ { exit }
+        in_sha256 && $1 == wanted && $2 == ":" { print $3; exit }
+    ' "$event_dump")
+    replayed_hex=$(printf '%s\n' "${replayed_pcr#0x}" | tr 'A-F' 'a-f')
+    live_pcr=$(printf '%s\n' "$pcr_output" \
+        | awk -v wanted="$measured_pcr" \
+            '$1 == wanted && $2 == ":" { print $3; exit }')
+    live_hex=$(printf '%s\n' "${live_pcr#0x}" | tr 'A-F' 'a-f')
+    printf '%s\n' "$replayed_hex" | grep -Eq '^[0-9a-f]{64}$' \
+        || die "the event log cannot replay SHA-256 PCR $measured_pcr"
+    test "$replayed_hex" = "$live_hex" \
+        || die "the event-log replay does not match live PCR $measured_pcr"
+done
+
+awk '
+    BEGIN { RS="- EventNum:" }
+    /PCRIndex:[[:space:]]*8([[:space:]]|$)/ &&
+    /AlgorithmId:[[:space:]]*sha256([[:space:]]|$)/ &&
+    /EventType:[[:space:]]*EV_IPL([[:space:]]|$)/ &&
+    /(grub_cmd:|kernel_cmdline:)/ { found=1 }
+    END { exit(found ? 0 : 1) }
+' "$event_dump" || die 'the event log has no GRUB command measurement in PCR 8'
+awk '
+    BEGIN { RS="- EventNum:" }
+    /PCRIndex:[[:space:]]*9([[:space:]]|$)/ &&
+    /AlgorithmId:[[:space:]]*sha256([[:space:]]|$)/ &&
+    /EventType:[[:space:]]*EV_IPL([[:space:]]|$)/ && /vmlinuz/ { kernel=1 }
+    /PCRIndex:[[:space:]]*9([[:space:]]|$)/ &&
+    /AlgorithmId:[[:space:]]*sha256([[:space:]]|$)/ &&
+    /EventType:[[:space:]]*EV_IPL([[:space:]]|$)/ && /(initrd|initramfs)/ { initrd=1 }
+    END { exit(kernel && initrd ? 0 : 1) }
+' "$event_dump" || die 'the event log lacks PCR 9 kernel or initramfs measurements'
+rm -f -- "$event_dump"
+event_dump=
+
+existing_tpm_slots=$(list_tpm_slots)
+if test "$mode" = enroll && test -n "$existing_tpm_slots"; then
+    die 'a Clevis TPM2 binding already exists; use --rebind instead'
+fi
+
+printf 'LUKS device: %s\n' "$device"
+printf 'Recovery key: %s\n' "$recovery_file"
+printf 'Header backup: %s\n' "$header_file"
+printf 'TPM PCR policy: %s\n' 'SHA-256 PCRs 4,7,8,9,14'
+printf '%s\n' 'WARNING: an unexpected boot passphrase prompt can indicate tampering; power off and inspect from trusted media.'
+printf '%s\n' 'WARNING: do not run cryptsetup, systemd-cryptenroll, or Clevis mutations against this volume until this transaction finishes.'
+if test "$mode" = enroll; then
+    confirmation_word=ENROLL-MEASURED-TPM2
+else
+    confirmation_word=RESEAL-MEASURED-TPM2
+fi
+printf 'Type %s to continue: ' "$confirmation_word" > /dev/tty
+IFS= read -r confirmation < /dev/tty \
+    || die 'could not read confirmation from the terminal'
+test "$confirmation" = "$confirmation_word" || die 'enrollment cancelled'
+
+# Recheck protected output paths after the interactive delay.
+check_protected_directory_chain "$recovery_directory"
+check_pinned_recovery_media
+check_prepared_boot_state
+test ! -e "$header_file_path" && test ! -L "$header_file_path" \
+    || die "$header_file appeared while waiting for confirmation"
+create_rollback_header
+check_pinned_recovery_media
+check_prepared_boot_state
+
+if test "$mode" = enroll; then
+    test ! -e "$recovery_file_path" && test ! -L "$recovery_file_path" \
+        || die "$recovery_file appeared while waiting for confirmation"
+    # A printable 256-bit secret can be typed at the initramfs prompt or read
+    # from the offline file. No newline is included in the key material. Build
+    # it under a random name, then publish it atomically without replacement.
+    recovery_temporary=$(mktemp -p "$recovery_fd_directory" \
+        '.kythos-recovery-key.XXXXXXXXXX') \
+        || die 'could not reserve a temporary recovery-key name'
+    od -An -N32 -tx1 /dev/urandom | tr -d ' \n' > "$recovery_temporary"
+    chmod 0600 "$recovery_temporary"
+    check_secure_recovery_file "$recovery_temporary"
+    ignore_termination_signals
+    if mv -T --update=none-fail -- \
+        "$recovery_temporary" "$recovery_file_path"; then
+        cleanup_recovery=true
+        recovery_temporary=
+    else
+        arm_termination_traps
+        die 'could not create the recovery file without replacing a path'
+    fi
+    arm_termination_traps
+    check_secure_recovery_file "$recovery_file_path"
+
+    printf '%s\n' 'Enter an existing LUKS passphrase to add the recovery key.'
+    check_pinned_recovery_media
+    rollback_required=true
+    cryptsetup luksAddKey "$device" "$recovery_file_path"
+    cryptsetup open --test-passphrase --disable-external-tokens \
+        --key-file "$recovery_file_path" "$device"
+    check_prepared_boot_state
+    check_pinned_recovery_media
+    clevis luks bind -y -d "$device" -k "$recovery_file_path" tpm2 "$pcr_policy"
+else
+    cryptsetup open --test-passphrase --disable-external-tokens \
+        --key-file "$recovery_file_path" "$device"
+    rollback_required=true
+    if test -n "$existing_tpm_slots"; then
+        for tpm_slot in $existing_tpm_slots
+        do
+            # clevis edit backs up and restores the header on failure. When an
+            # old PCR policy cannot unlock, it asks for an existing passphrase.
+            check_pinned_recovery_media
+            clevis luks edit -f -d "$device" -s "$tpm_slot" -c "$pcr_policy"
+            check_prepared_boot_state
+        done
+    else
+        # Recover cleanly from an earlier interrupted enrollment that already
+        # added the offline recovery key but did not add a TPM token.
+        check_pinned_recovery_media
+        clevis luks bind -y -d "$device" -k "$recovery_file_path" tpm2 "$pcr_policy"
+    fi
+fi
+
+verified_slots=$(list_tpm_slots)
+test -n "$verified_slots" || die 'the TPM2 binding could not be found'
+for tpm_slot in $verified_slots
+do
+    slot_description=$(clevis luks list -d "$device" -s "$tpm_slot")
+    printf '%s\n' "$slot_description" | grep -Fq '"pcr_bank":"sha256"' \
+        || die "TPM slot $tpm_slot does not use the SHA-256 PCR bank"
+    printf '%s\n' "$slot_description" | grep -Fq '"pcr_ids":"4,7,8,9,14"' \
+        || die "TPM slot $tpm_slot does not use the required measured PCRs"
+    # This extracts the random Clevis slot key only into the pipe and proves
+    # that the new policy unseals under the current measured boot state.
+    clevis luks pass -d "$device" -s "$tpm_slot" \
+        | cryptsetup open --test-passphrase --key-file - "$device"
+done
+
+check_prepared_boot_state
+check_pinned_recovery_media
+
+header_temporary=$(mktemp -p "$recovery_fd_directory" \
+    '.kythos-luks-header.XXXXXXXXXX') \
+    || die 'could not reserve a temporary header name'
+rm -f -- "$header_temporary"
+cryptsetup luksHeaderBackup "$device" --header-backup-file "$header_temporary"
+chmod 0600 "$header_temporary"
+test -f "$header_temporary" && test ! -L "$header_temporary" \
+    && test "$(stat -Lc '%u %a %h' -- "$header_temporary")" = '0 600 1' \
+    || die 'header backup ownership, mode, or link count is unsafe'
+check_pinned_recovery_media
+# Ignore termination only across the atomic publication and state update. GNU
+# mv's none-fail mode refuses an existing destination and reports failure.
+ignore_termination_signals
+if mv -T --update=none-fail -- "$header_temporary" "$header_file_path"; then
+    published_header=true
+    header_temporary=
+else
+    arm_termination_traps
+    die 'could not publish the header backup without replacing a file'
+fi
+arm_termination_traps
+test -f "$header_file_path" && test ! -L "$header_file_path" \
+    && test "$(stat -Lc '%u %a %h' -- "$header_file_path")" = '0 600 1' \
+    || die 'published header backup ownership, mode, or link count is unsafe'
+sync -f "$recovery_file_path"
+sync -f "$header_file_path"
+sync -f "$recovery_fd_directory"
+blockdev --flushbufs "$recovery_fd_block"
+cleanup_recovery=false
+rollback_required=false
+rm -f -- "$rollback_header"
+rollback_header=
+rollback_header_display=
+sync -f "$recovery_fd_directory"
+blockdev --flushbufs "$recovery_fd_block"
+rm -f -- "$prepare_marker"
+clear_traps
+
+printf '%s\n' 'Measured TPM2 enrollment completed.'
+printf 'Keep %s and %s offline and physically secure.\n' \
+    "$recovery_file" "$header_file"
+printf '%s\n' 'The original passphrase remains enrolled as a second fallback.'
+printf '%s\n' 'After boot, firmware, GRUB, kernel, initramfs, command-line, or MOK changes, prepare, reboot with a passphrase, and run --rebind.'
+printf '%s\n' 'If a passphrase prompt is unexpected, power off and inspect the boot files from trusted media before entering any secret.'
+printf 'Unmount %s cleanly before removing the recovery media.\n' "$recovery_mount"

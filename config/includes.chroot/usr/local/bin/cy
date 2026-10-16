@@ -1,0 +1,52 @@
+#!/bin/sh
+set -eu
+
+blocked_option()
+{
+    printf 'cy: refusing unsafe APT override: %s\n' "$1" >&2
+    exit 2
+}
+
+blocked_operand()
+{
+    printf 'cy: refusing unauthenticated local package or URI operand: %s\n' "$1" >&2
+    exit 2
+}
+
+if test "${APT_CONFIG+x}" = x; then
+    blocked_option 'APT_CONFIG environment variable'
+fi
+
+for argument do
+    normalized_argument=$(printf '%s' "$argument" | tr '[:upper:]' '[:lower:]')
+    case "$normalized_argument" in
+        --allow-unauthenticated|--allow-unauthenticated=*|\
+        --allow-insecure-repositories|--allow-insecure-repositories=*|\
+        --force-yes|--force-yes=*|\
+        --allow-remove-essential|--allow-remove-essential=*|\
+        --allow-change-held-packages|--allow-change-held-packages=*)
+            blocked_option "$argument"
+            ;;
+        --with-source|--with-source=*)
+            # APT can use local Packages or .changes metadata supplied through
+            # this option and then install the referenced unsigned packages.
+            blocked_option "$argument"
+            ;;
+        -c|--config-file|-c?*|--config-file=*|\
+        -o|--option|-o?*|--option=*)
+            # A custom APT configuration can re-enable unauthenticated
+            # packages indirectly. Keep all configuration injection on the
+            # underlying apt command, outside the guarded operator command.
+            blocked_option "$argument"
+            ;;
+        /*|./*|../*|~/*|file:*|copy:*|*://*|*.deb|*.ddeb|*.udeb)
+            # APT authenticates repository packages through signed metadata,
+            # but a local package path can execute unverified maintainer
+            # scripts as root. Keep that workflow outside this guarded
+            # repository-only command.
+            blocked_operand "$argument"
+            ;;
+    esac
+done
+
+exec /usr/bin/apt "$@"

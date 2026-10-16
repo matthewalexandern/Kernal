@@ -1,0 +1,12 @@
+[Unit]
+Description=Refresh and verify the KythOS OpenSSL FIPS provider configuration
+After=local-fs.target
+Before=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/kythos-refresh-fips-config
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

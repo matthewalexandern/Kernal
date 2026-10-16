@@ -1,0 +1,196 @@
+reference_id	srg_id	cci_ids	severity	status	kythos_evidence_or_deviation
+UBTU-24-100010	SRG-OS-000480-GPOS-00227	CCI-000366	low	deviation	systemd-timesyncd is deliberately retained; the Ubuntu chrony-only implementation is not applied
+UBTU-24-100020	SRG-OS-000480-GPOS-00227	CCI-000366	low	not-assessed	Not assessed in the current common-base review
+UBTU-24-100030	SRG-OS-000074-GPOS-00042	CCI-000197	high	not-assessed	Not assessed in the current common-base review
+UBTU-24-100040	SRG-OS-000095-GPOS-00049	CCI-000381	high	not-assessed	Not assessed in the current common-base review
+UBTU-24-100100	SRG-OS-000445-GPOS-00199	CCI-002696	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-100110	SRG-OS-000445-GPOS-00199	CCI-002696	medium	implemented	aide-common; kythos-aide-initialize.timer; dailyaidecheck.timer; role-data exclusions
+UBTU-24-100120	SRG-OS-000446-GPOS-00200	CCI-002699	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-100130	SRG-OS-000447-GPOS-00201	CCI-002702,CCI-001744	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-100200	SRG-OS-000269-GPOS-00103	CCI-001665	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-100300	SRG-OS-000297-GPOS-00115	CCI-002314	medium	implemented-equivalent	nftables installed with KythOS default-drop input policy
+UBTU-24-100310	SRG-OS-000297-GPOS-00115	CCI-002314	medium	implemented-equivalent	nftables.service replaces the Ubuntu-specific ufw requirement
+UBTU-24-100400	SRG-OS-000365-GPOS-00152	CCI-003938,CCI-001914,CCI-000169,CCI-000172,CCI-000135,CCI-000130,CCI-000131,CCI-000132,CCI-000133,CCI-000134,CCI-000154,CCI-000158,CCI-001876,CCI-001875,CCI-001877,CCI-001878,CCI-001879,CCI-001880,CCI-001881,CCI-001882	medium	implemented	auditd package and enabled service
+UBTU-24-100410	SRG-OS-000365-GPOS-00152	CCI-003938,CCI-001914,CCI-000169,CCI-000172,CCI-000135,CCI-000130,CCI-000131,CCI-000132,CCI-000133,CCI-000134,CCI-000154,CCI-000158,CCI-001876,CCI-001875,CCI-001877,CCI-001878,CCI-001879,CCI-001880,CCI-001881,CCI-001882	medium	partial	early audit plus identity, privilege, policy, time, mount, and module rules; role audits remain
+UBTU-24-100450	SRG-OS-000342-GPOS-00133	CCI-001851	low	deployment-required	remote audit destination and credentials are organization-specific
+UBTU-24-100500	SRG-OS-000312-GPOS-00124	CCI-002165,CCI-001764,CCI-001774	medium	implemented	apparmor and apparmor-utils installed
+UBTU-24-100510	SRG-OS-000368-GPOS-00154	CCI-001764,CCI-002235,CCI-001774	medium	installed-system	AppArmor enabled after install; stock service intentionally skips live overlays
+UBTU-24-100600	SRG-OS-000480-GPOS-00225	CCI-000366	medium	user-approved-deviation	no pwquality complexity policy
+UBTU-24-100650	SRG-OS-000705-GPOS-00150	CCI-004046,CCI-004047,CCI-000765,CCI-000766	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-100660	SRG-OS-000705-GPOS-00150	CCI-004046,CCI-004047,CCI-000765,CCI-000766	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-100700	SRG-OS-000480-GPOS-00227	CCI-000366	low	alternate-implementation	systemd-timesyncd replaces the Ubuntu-specific chrony package check; authoritative site sources remain deployment policy
+UBTU-24-100800	SRG-OS-000423-GPOS-00187	CCI-002418,CCI-002420,CCI-002422	high	implemented	openssh-server installed
+UBTU-24-100810	SRG-OS-000423-GPOS-00187	CCI-002418,CCI-002420,CCI-002422	high	implemented	ssh.service is enabled at build time and its active runtime state is covered by the baseline health check
+UBTU-24-100820	SRG-OS-000033-GPOS-00014	CCI-000068,CCI-003123,CCI-002421	medium	deferred	no global cipher restriction until a validated crypto boundary and compatibility test exist
+UBTU-24-100830	SRG-OS-000250-GPOS-00093	CCI-001453,CCI-002890,CCI-002421	medium	deferred	no global MAC restriction until a validated crypto boundary and compatibility test exist
+UBTU-24-100840	SRG-OS-000033-GPOS-00014	CCI-000068	medium	deferred	no global KEX restriction until a validated crypto boundary and compatibility test exist
+UBTU-24-100850	SRG-OS-000250-GPOS-00093	CCI-001453	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-100860	SRG-OS-000250-GPOS-00093	CCI-001453	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-100900	SRG-OS-000376-GPOS-00161	CCI-001953	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-100910	SRG-OS-000376-GPOS-00161	CCI-001953	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-101000	SRG-OS-000031-GPOS-00012	CCI-000060,CCI-000057	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-102000	SRG-OS-000080-GPOS-00048	CCI-000213	high	not-assessed	Not assessed in the current common-base review
+UBTU-24-102010	SRG-OS-000254-GPOS-00095	CCI-001464	medium	implemented	kernel audit=1 and audit_backlog_limit=8192
+UBTU-24-200000	SRG-OS-000027-GPOS-00008	CCI-000054	low	not-assessed	Not assessed in the current common-base review
+UBTU-24-200020	SRG-OS-000029-GPOS-00010	CCI-000057	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-200040	SRG-OS-000028-GPOS-00009	CCI-000056	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-200060	SRG-OS-000279-GPOS-00109	CCI-002361	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-200090	SRG-OS-000032-GPOS-00013	CCI-000067	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-200250	SRG-OS-000002-GPOS-00002	CCI-000016,CCI-001682	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-200260	SRG-OS-000118-GPOS-00060	CCI-003627,CCI-003628	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-200280	SRG-OS-000004-GPOS-00004	CCI-000018,CCI-001403,CCI-001404,CCI-001405,CCI-002130,CCI-000172	medium	implemented	audit watch on /etc/passwd
+UBTU-24-200290	SRG-OS-000004-GPOS-00004	CCI-000018,CCI-001403,CCI-001404,CCI-001405,CCI-002130,CCI-000172	medium	implemented	audit watch on /etc/group
+UBTU-24-200300	SRG-OS-000004-GPOS-00004	CCI-000018,CCI-001403,CCI-001404,CCI-001405,CCI-002130,CCI-000172	medium	implemented	audit watch on /etc/shadow
+UBTU-24-200310	SRG-OS-000004-GPOS-00004	CCI-000018,CCI-001403,CCI-001404,CCI-001405,CCI-002130,CCI-000172	medium	implemented	audit watch on /etc/gshadow
+UBTU-24-200320	SRG-OS-000004-GPOS-00004	CCI-000018,CCI-001403,CCI-001404,CCI-001405,CCI-002130,CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-200580	SRG-OS-000326-GPOS-00126	CCI-002233,CCI-002234,CCI-004188	medium	implemented-equivalent	set-user-ID and set-group-ID exec audits cover effective and real identity mismatches as a superset of root-only rules
+UBTU-24-200610	SRG-OS-000021-GPOS-00005	CCI-000044,CCI-002238	low	not-assessed	Not assessed in the current common-base review
+UBTU-24-200640	SRG-OS-000023-GPOS-00006	CCI-000048,CCI-001384,CCI-001385,CCI-001386,CCI-001387,CCI-001388	medium	deployment-required	no US-government-specific consent banner in a worldwide general-purpose image
+UBTU-24-200650	SRG-OS-000023-GPOS-00006	CCI-000048	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-200660	SRG-OS-000023-GPOS-00006	CCI-000048	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-300001	SRG-OS-000366-GPOS-00153	CCI-003992	low	implemented	APT rejects insecure repositories and authenticates archive metadata
+UBTU-24-300006	SRG-OS-000259-GPOS-00100	CCI-001499	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-300007	SRG-OS-000259-GPOS-00100	CCI-001499	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-300008	SRG-OS-000259-GPOS-00100	CCI-001499	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-300009	SRG-OS-000259-GPOS-00100	CCI-001499	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-300010	SRG-OS-000259-GPOS-00100	CCI-001499	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-300011	SRG-OS-000259-GPOS-00100	CCI-001499	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-300012	SRG-OS-000259-GPOS-00100	CCI-001499	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-300013	SRG-OS-000259-GPOS-00100	CCI-001499	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-300014	SRG-OS-000710-GPOS-00160	CCI-004061	medium	user-approved-deviation	dictionary passwords are not prohibited
+UBTU-24-300016	SRG-OS-000480-GPOS-00225	CCI-000366	medium	user-approved-deviation	no forced pwquality stack
+UBTU-24-300017	SRG-OS-000480-GPOS-00226	CCI-000366	low	not-assessed	Not assessed in the current common-base review
+UBTU-24-300021	SRG-OS-000480-GPOS-00227	CCI-000366	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-300022	SRG-OS-000480-GPOS-00227	CCI-000366	high	not-assessed	Not assessed in the current common-base review
+UBTU-24-300023	SRG-OS-000480-GPOS-00227	CCI-000366	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-300025	SRG-OS-000480-GPOS-00227	CCI-000366	high	not-assessed	Not assessed in the current common-base review
+UBTU-24-300026	SRG-OS-000480-GPOS-00227	CCI-000366	high	not-assessed	Not assessed in the current common-base review
+UBTU-24-300027	SRG-OS-000480-GPOS-00227	CCI-000366	high	implemented	installer-created accounts are locked or require a nonempty password; PAM and SSH reject null passwords
+UBTU-24-300028	SRG-OS-000480-GPOS-00227	CCI-000366	high	not-assessed	Not assessed in the current common-base review
+UBTU-24-300029	SRG-OS-000480-GPOS-00227	CCI-000366	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-300030	SRG-OS-000480-GPOS-00228	CCI-000366	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-300031	SRG-OS-000480-GPOS-00229	CCI-000366	high	implemented	PermitEmptyPasswords and PermitUserEnvironment are explicitly disabled
+UBTU-24-300039	SRG-OS-000690-GPOS-00140	CCI-003959,CCI-001958	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-300041	SRG-OS-000096-GPOS-00050	CCI-000382	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-400000	SRG-OS-000104-GPOS-00051	CCI-000764,CCI-000804	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-400020	SRG-OS-000105-GPOS-00052	CCI-000765,CCI-000766	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-400030	SRG-OS-000105-GPOS-00052	CCI-000765,CCI-000766	medium	deployment-required	smart-card or PIV identity provider is organization-specific
+UBTU-24-400060	SRG-OS-000377-GPOS-00162	CCI-001954	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-400110	SRG-OS-000109-GPOS-00056	CCI-004045	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-400220	SRG-OS-000073-GPOS-00041	CCI-004062	medium	implemented-equivalent	Debian yescrypt shadow hashes replace the Ubuntu-specific sha512 rounds check; cleartext passwords are not stored
+UBTU-24-400260	SRG-OS-000069-GPOS-00037	CCI-004065,CCI-004066	medium	user-approved-deviation	no uppercase password requirement
+UBTU-24-400270	SRG-OS-000070-GPOS-00038	CCI-004065,CCI-004066	medium	user-approved-deviation	no lowercase password requirement
+UBTU-24-400280	SRG-OS-000071-GPOS-00039	CCI-004065,CCI-004066	medium	user-approved-deviation	no numeric password requirement
+UBTU-24-400290	SRG-OS-000072-GPOS-00040	CCI-004065,CCI-004066	medium	user-approved-deviation	no password-change character-count requirement
+UBTU-24-400300	SRG-OS-000075-GPOS-00043	CCI-004065,CCI-004066	medium	user-approved-deviation	no minimum password lifetime
+UBTU-24-400310	SRG-OS-000076-GPOS-00044	CCI-004066	medium	user-approved-deviation	no maximum password lifetime
+UBTU-24-400320	SRG-OS-000078-GPOS-00046	CCI-004065,CCI-004066	medium	user-approved-deviation	no 15-character minimum
+UBTU-24-400330	SRG-OS-000266-GPOS-00101	CCI-004065,CCI-004066	medium	user-approved-deviation	no special-character requirement
+UBTU-24-400340	SRG-OS-000383-GPOS-00166	CCI-002007	low	not-assessed	Not assessed in the current common-base review
+UBTU-24-400360	SRG-OS-000066-GPOS-00034	CCI-000185,CCI-004909	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-400370	SRG-OS-000068-GPOS-00036	CCI-000187	high	not-assessed	Not assessed in the current common-base review
+UBTU-24-400375	SRG-OS-000066-GPOS-00034	CCI-000185,CCI-004909	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-400380	SRG-OS-000384-GPOS-00167	CCI-004068	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-400400	SRG-OS-000120-GPOS-00061	CCI-000803	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-500010	SRG-OS-000392-GPOS-00172	CCI-002884,CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-500050	SRG-OS-000125-GPOS-00065	CCI-000877	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-600000	SRG-OS-000163-GPOS-00072	CCI-001133	medium	deferred	no forced global SSH idle timeout
+UBTU-24-600010	SRG-OS-000163-GPOS-00072	CCI-001133	medium	deferred	no forced global 10-minute SSH idle timeout
+UBTU-24-600030	SRG-OS-000478-GPOS-00223	CCI-002450	high	deferred	OpenSSL FIPS provider is opt-in and is not a complete validated OS boundary
+UBTU-24-600060	SRG-OS-000403-GPOS-00182	CCI-002470	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-600070	SRG-OS-000184-GPOS-00078	CCI-001190	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-600090	SRG-OS-000185-GPOS-00079	CCI-001199,CCI-002475,CCI-002476,CCI-004910	high	not-assessed	Not assessed in the current common-base review
+UBTU-24-600130	SRG-OS-000134-GPOS-00068	CCI-001084	high	not-assessed	Not assessed in the current common-base review
+UBTU-24-600140	SRG-OS-000138-GPOS-00069	CCI-001090	low	not-assessed	Not assessed in the current common-base review
+UBTU-24-600150	SRG-OS-000138-GPOS-00069	CCI-001090	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-600160	SRG-OS-000785-GPOS-00250	CCI-004922,CCI-004923	low	not-assessed	Not assessed in the current common-base review
+UBTU-24-600180	SRG-OS-000356-GPOS-00144	CCI-004926	low	not-assessed	Not assessed in the current common-base review
+UBTU-24-600190	SRG-OS-000142-GPOS-00071	CCI-001095	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-600200	SRG-OS-000420-GPOS-00186	CCI-002385	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-600230	SRG-OS-000481-GPOS-00481	CCI-002418	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-700010	SRG-OS-000205-GPOS-00083	CCI-001312	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-700020	SRG-OS-000205-GPOS-00083	CCI-001312	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-700030	SRG-OS-000205-GPOS-00083	CCI-001312	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-700040	SRG-OS-000206-GPOS-00084	CCI-001314	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-700050	SRG-OS-000206-GPOS-00084	CCI-001314	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-700060	SRG-OS-000206-GPOS-00084	CCI-001314	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-700070	SRG-OS-000206-GPOS-00084	CCI-001314	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-700080	SRG-OS-000206-GPOS-00084	CCI-001314	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-700090	SRG-OS-000206-GPOS-00084	CCI-001314	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-700100	SRG-OS-000206-GPOS-00084	CCI-001314	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-700110	SRG-OS-000206-GPOS-00084	CCI-001314	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-700120	SRG-OS-000206-GPOS-00084	CCI-001314	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-700130	SRG-OS-000206-GPOS-00084	CCI-001314	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-700140	SRG-OS-000206-GPOS-00084	CCI-001314	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-700150	SRG-OS-000206-GPOS-00084	CCI-001314	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-700300	SRG-OS-000433-GPOS-00192	CCI-002824	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-700310	SRG-OS-000433-GPOS-00193	CCI-002824	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-700320	SRG-OS-000437-GPOS-00194	CCI-002617	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900040	SRG-OS-000063-GPOS-00032	CCI-000171	medium	implemented	build hook enforces root ownership and mode 0640 on audit configuration and rule files
+UBTU-24-900050	SRG-OS-000063-GPOS-00032	CCI-000171	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900060	SRG-OS-000063-GPOS-00032	CCI-000171	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900070	SRG-OS-000064-GPOS-00033	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900080	SRG-OS-000064-GPOS-00033	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900090	SRG-OS-000064-GPOS-00033	CCI-000172	medium	implemented	/usr/bin/mount execution and mount syscalls are audited for interactive users
+UBTU-24-900100	SRG-OS-000064-GPOS-00033	CCI-000172	medium	implemented	/usr/bin/umount execution and umount2 syscalls are audited for interactive users
+UBTU-24-900110	SRG-OS-000064-GPOS-00033	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900120	SRG-OS-000064-GPOS-00033	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900130	SRG-OS-000064-GPOS-00033	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900140	SRG-OS-000064-GPOS-00033	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900150	SRG-OS-000064-GPOS-00033	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900160	SRG-OS-000064-GPOS-00033	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900170	SRG-OS-000064-GPOS-00033	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900180	SRG-OS-000064-GPOS-00033	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900190	SRG-OS-000064-GPOS-00033	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900200	SRG-OS-000064-GPOS-00033	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900210	SRG-OS-000064-GPOS-00033	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900220	SRG-OS-000064-GPOS-00033	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900230	SRG-OS-000064-GPOS-00033	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900240	SRG-OS-000064-GPOS-00033	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900250	SRG-OS-000064-GPOS-00033	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900260	SRG-OS-000064-GPOS-00033	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900270	SRG-OS-000064-GPOS-00033	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900280	SRG-OS-000064-GPOS-00033	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900290	SRG-OS-000064-GPOS-00033	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900300	SRG-OS-000064-GPOS-00033	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900310	SRG-OS-000064-GPOS-00033	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900320	SRG-OS-000064-GPOS-00033	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900330	SRG-OS-000064-GPOS-00033	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900340	SRG-OS-000064-GPOS-00033	CCI-000172	medium	implemented	init_module and finit_module syscalls audited
+UBTU-24-900350	SRG-OS-000064-GPOS-00033	CCI-000172	medium	implemented	delete_module syscall audited
+UBTU-24-900510	SRG-OS-000466-GPOS-00210	CCI-000172	medium	implemented	/etc/sudoers watched for writes and attribute changes
+UBTU-24-900520	SRG-OS-000466-GPOS-00210	CCI-000172	medium	implemented	/etc/sudoers.d watched for writes and attribute changes
+UBTU-24-900540	SRG-OS-000468-GPOS-00212	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900590	SRG-OS-000472-GPOS-00217	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900600	SRG-OS-000472-GPOS-00217	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900610	SRG-OS-000472-GPOS-00217	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900730	SRG-OS-000477-GPOS-00222	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900740	SRG-OS-000477-GPOS-00222	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900750	SRG-OS-000477-GPOS-00222	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-900920	SRG-OS-000341-GPOS-00132	CCI-001849	low	partial	512 MiB local rotation budget; actual one-week sufficiency must be measured by role
+UBTU-24-900950	SRG-OS-000479-GPOS-00224	CCI-001851	low	not-assessed	Not assessed in the current common-base review
+UBTU-24-900960	SRG-OS-000343-GPOS-00134	CCI-001855	low	not-assessed	Not assessed in the current common-base review
+UBTU-24-900980	SRG-OS-000046-GPOS-00022	CCI-000139	low	not-assessed	Not assessed in the current common-base review
+UBTU-24-901220	SRG-OS-000359-GPOS-00146	CCI-001890	low	not-assessed	Not assessed in the current common-base review
+UBTU-24-901230	SRG-OS-000257-GPOS-00098	CCI-001494,CCI-001493	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-901240	SRG-OS-000257-GPOS-00098	CCI-001494,CCI-001493	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-901250	SRG-OS-000257-GPOS-00098	CCI-001494,CCI-001493	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-901260	SRG-OS-000258-GPOS-00099	CCI-001495	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-901270	SRG-OS-000258-GPOS-00099	CCI-001495	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-901280	SRG-OS-000258-GPOS-00099	CCI-001495	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-901300	SRG-OS-000057-GPOS-00027	CCI-000162,CCI-000163	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-901310	SRG-OS-000057-GPOS-00027	CCI-000162,CCI-000163,CCI-000164	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-901350	SRG-OS-000057-GPOS-00027	CCI-000162,CCI-000163,CCI-000164	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-901380	SRG-OS-000059-GPOS-00029	CCI-000164	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-909890	SRG-OS-000278-GPOS-00108	CCI-001496	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-909000	SRG-OS-000058-GPOS-00028	CCI-000163	medium	partial	rules are root-owned; immutable audit mode is deferred for recoverability and edition changes
+UBTU-24-300020	SRG-OS-000480-GPOS-00227	CCI-000366	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-300019	SRG-OS-000373-GPOS-00156	CCI-002038,CCI-004895	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-200270	SRG-OS-000471-GPOS-00215	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-200043	SRG-OS-000031-GPOS-00012	CCI-000060	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-200041	SRG-OS-000114-GPOS-00059	CCI-000778,CCI-001958	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-200042	SRG-OS-000028-GPOS-00009	CCI-000056,CCI-000057,CCI-000058	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-700400	SRG-OS-000480-GPOS-00227	CCI-000366	high	not-assessed	Not assessed in the current common-base review
+UBTU-24-100050	SRG-OS-000095-GPOS-00049	CCI-000381	high	not-assessed	Not assessed in the current common-base review
+UBTU-24-900315	SRG-OS-000064-GPOS-00033	CCI-000172	medium	not-assessed	Not assessed in the current common-base review
+UBTU-24-101100	SRG-OS-000445-GPOS-00199	CCI-002696	medium	not-assessed	Not assessed in the current common-base review

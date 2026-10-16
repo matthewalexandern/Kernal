@@ -5,6 +5,11 @@ umask 022
 install -d -m 0755 /var/log/journal
 nft --check --file /etc/nftables.conf
 
+# Git records ordinary files as 0644, while the STIG reference requires audit
+# configuration to be 0640 or more restrictive in the installed filesystem.
+chown root:root /etc/audit/auditd.conf /etc/audit/rules.d/*.rules
+chmod 0640 /etc/audit/auditd.conf /etc/audit/rules.d/*.rules
+
 systemctl enable apparmor.service
 systemctl enable auditd.service
 systemctl enable nftables.service

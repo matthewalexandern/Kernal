@@ -1,0 +1,55 @@
+#!/bin/sh
+set -eu
+umask 022
+
+set_login_default()
+{
+    setting=$1
+    value=$2
+
+    if grep -Eq "^[[:space:]]*${setting}[[:space:]]+" /etc/login.defs; then
+        sed -Ei "s|^[[:space:]]*${setting}[[:space:]]+.*$|${setting}\t${value}|" \
+            /etc/login.defs
+    else
+        printf '%s\t%s\n' "$setting" "$value" >> /etc/login.defs
+    fi
+}
+
+# Do not impose password aging or strength rules. Empty passwords remain
+# unusable because nullok is removed from the authentication stack.
+set_login_default PASS_MAX_DAYS -1
+set_login_default PASS_MIN_DAYS 0
+set_login_default PASS_WARN_AGE -1
+
+sed -Ei '/pam_unix\.so/ s/(^|[[:space:]])nullok([[:space:]]|$)/ /g' \
+    /etc/pam.d/common-auth /etc/pam.d/common-password
+sed -Ei '/pam_unix\.so/ s/(^|[[:space:]])obscure([[:space:]]|$)/ /g' \
+    /etc/pam.d/common-password
+sed -Ei '/pam_unix\.so/ {
+    s/(^|[[:space:]])(minlen|remember)=[^[:space:]]+/\1/g
+    s/pam_unix\.so/pam_unix.so minlen=1/
+}' /etc/pam.d/common-password
+
+if grep -Eq 'pam_(cracklib|passwdqc|pwhistory|pwquality)\.so' \
+    /etc/pam.d/common-password; then
+    printf '%s\n' 'A password policy PAM module is active unexpectedly.' >&2
+    exit 1
+fi
+
+# The installer preseed keeps root locked on the installed system. Lock the
+# live image account as defense in depth as well.
+usermod --lock root
+
+# Validate the assembled OpenSSH configuration before deleting build-time
+# host keys. The ssh.service drop-in creates unique installed-system keys.
+install -d -m 0755 /run/sshd
+/usr/bin/ssh-keygen -A
+/usr/sbin/sshd -t
+rm -f /etc/ssh/ssh_host_dsa_key /etc/ssh/ssh_host_dsa_key.pub \
+    /etc/ssh/ssh_host_ecdsa_key /etc/ssh/ssh_host_ecdsa_key.pub \
+    /etc/ssh/ssh_host_ed25519_key /etc/ssh/ssh_host_ed25519_key.pub \
+    /etc/ssh/ssh_host_rsa_key /etc/ssh/ssh_host_rsa_key.pub
+
+systemctl enable ssh.service
+systemctl disable ssh.socket >/dev/null 2>&1 || true
+systemctl disable sshd-keygen.service >/dev/null 2>&1 || true

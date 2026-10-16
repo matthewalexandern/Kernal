@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=KythOS Kernal
+Description=KythOS Kernal boot and encrypted-volume prompt
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/kythos
+ScriptFile=/usr/share/plymouth/themes/kythos/kythos.script

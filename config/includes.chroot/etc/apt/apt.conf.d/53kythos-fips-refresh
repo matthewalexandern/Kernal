@@ -1,0 +1,6 @@
+// Recompute the provider integrity MAC after authenticated package upgrades.
+// A refresh failure is reported but does not corrupt or strand the APT run;
+// kythos-fips-status continues to fail until the provider is repaired.
+DPkg::Post-Invoke {
+    "if test -x /usr/local/libexec/kythos-refresh-fips-config; then /usr/local/libexec/kythos-refresh-fips-config || { echo 'KythOS FIPS provider refresh failed; run sudo kythos-fips-status.' >&2; true; }; fi";
+};

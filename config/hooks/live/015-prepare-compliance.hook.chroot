@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+umask 022
+
+/usr/local/libexec/kythos-refresh-fips-config
+
+systemctl enable kythos-fips-refresh.service
+systemctl enable kythos-aide-initialize.timer
+systemctl enable dailyaidecheck.timer

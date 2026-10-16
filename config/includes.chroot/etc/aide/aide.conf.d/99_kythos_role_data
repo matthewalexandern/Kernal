@@ -1,0 +1,8 @@
+# Role data changes frequently and is covered by each edition's backup and
+# integrity policy rather than the common system-file database.
+!/home
+!/srv
+!/var/lib/containers
+!/var/lib/docker
+!/var/lib/libvirt
+!/var/lib/kythos-models

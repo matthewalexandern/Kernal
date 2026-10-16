@@ -1,0 +1,41 @@
+#!/bin/sh
+set -u
+
+printf '%s\n' 'KythOS NVIDIA readiness'
+printf '%-28s %s\n' 'running kernel' "$(uname -r)"
+
+if lspci -Dnn | grep -qi 'vga\|3d controller'; then
+    lspci -Dnn | grep -iE 'vga|3d controller'
+else
+    printf '%-28s %s\n' 'display controller' 'not detected'
+fi
+
+if command -v nvidia-detect >/dev/null 2>&1; then
+    nvidia-detect || true
+fi
+
+if command -v mokutil >/dev/null 2>&1; then
+    mokutil --sb-state 2>/dev/null || printf '%s\n' 'Secure Boot state unavailable'
+fi
+
+headers="/lib/modules/$(uname -r)/build"
+printf '%-28s %s\n' 'matching kernel headers' \
+    "$(test -e "$headers" && printf available || printf missing)"
+
+if command -v dkms >/dev/null 2>&1; then
+    printf '%s\n' 'DKMS modules:'
+    dkms status || true
+fi
+
+if modinfo nvidia >/dev/null 2>&1; then
+    printf '%-28s %s\n' 'NVIDIA module signer' \
+        "$(modinfo -F signer nvidia 2>/dev/null || printf unsigned)"
+    printf '%-28s %s\n' 'NVIDIA module version' \
+        "$(modinfo -F version nvidia 2>/dev/null || printf unknown)"
+else
+    printf '%-28s %s\n' 'NVIDIA kernel module' 'not installed'
+fi
+
+if command -v nvidia-smi >/dev/null 2>&1; then
+    nvidia-smi
+fi

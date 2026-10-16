@@ -1,0 +1,12 @@
+label live-@FLAVOUR@
+	menu label ^Start KythOS Kernal
+	menu default
+	linux @LINUX@
+	initrd @INITRD@
+	append @APPEND_LIVE@
+
+label live-@FLAVOUR@-failsafe
+	menu label KythOS Kernal (^compatibility mode)
+	linux @LINUX@
+	initrd @INITRD@
+	append @APPEND_LIVE_FAILSAFE@

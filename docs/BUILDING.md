@@ -17,15 +17,90 @@ during a build and is never committed.
 
 ## Build outputs
 
-`scripts/build.sh` creates a new timestamped work directory for every run and
-copies completed outputs to `artifacts/<timestamp>/`. Set `SOURCE_DATE_EPOCH`
-to a reviewed source commit timestamp when producing a release. Debian mirrors
-continue to move, so the evidence records resolved package versions even when
-the source tree itself is unchanged. A nonempty live-build
-`source/missing-source.txt` is copied into the evidence and fails the build.
-The public release audit must still inventory every distributed binary and
-installer component against its source; live-build's report does not cover all
-temporary or installer-pool artifacts.
+`scripts/build.sh` creates fresh root-only directories below
+`/var/lib/kythos-builder/builds/` and copies completed outputs below
+`/var/lib/kythos-builder/artifacts/`. A clean Git checkout uses its commit
+timestamp as `SOURCE_DATE_EPOCH`; an unpacked reviewed recipe must supply that
+value explicitly. The tracked `SNAPSHOT` pins bootstrap, chroot, security, and
+Debian Installer downloads to immutable snapshot.debian.org archives. APT
+signature verification stays enabled; only the archived Release file's expired
+`Valid-Until` timestamp is ignored. The source-stage signed `InRelease` files
+and their hashes are copied into the release evidence before live-build restores
+the current update mirrors for installed systems.
+
+The build performs an exact source audit in addition to live-build's own
+`source/missing-source.txt` check. It inventories the live root, every `.deb`
+and `.udeb` in the binary ISO, and cached binary-input packages whose bootloader
+files are extracted into the image. It records each binary's exact source
+package and version, downloads any missing corresponding source, and mounts the
+finished binary and source ISOs to verify the manifests. Any missing tuple or
+binary mismatch fails the build. The coverage report and manifests are release
+artifacts.
+
+For example, live-build can report the EFI metapackage `grub-efi` even though
+its actual source package is `grub2`. The KythOS audit reads the authoritative
+`Source` and `Version` fields from each binary, including binNMU handling,
+instead of guessing from binary names. It clears live-build's report only when
+the file is exactly its six-line header-only form; any reported package row
+fails the source hook.
+
+`KYTHOS_BUILD_ROOT` and `KYTHOS_ARTIFACT_ROOT` can select different locations,
+but each destination's existing parent chain must be root-owned, contain no
+symlink, and have no group or other write permission. The script creates each
+final leaf atomically and refuses existing, root, equal, or overlapping paths.
+
+An interrupted build's download cache can seed a new build without reusing a
+chroot, installer image, package index, or generated image state. Point
+`KYTHOS_CACHE_SEED` at the previous live-build `cache` directory. The cache
+and all of its parent directories must remain root-owned and protected from
+group or other writes. Only regular `.deb` files from
+`packages.bootstrap`, `packages.chroot`, and `packages.binary` are copied.
+Their checksums and the package-only scope are recorded:
+
+```sh
+sudo KYTHOS_CACHE_SEED=/path/to/previous-build/cache \
+  ./scripts/build.sh
+```
+
+Release acceptance uses a clean no-seed build. The pinned archive and
+normalized timestamps improve rebuildability, but KythOS does not claim
+bit-for-bit reproducibility until two independent clean builds produce matching
+artifact hashes.
+
+## Redistributable firmware boundary
+
+The recipe lists broad redistributable firmware coverage suitable for the
+unattended amd64 live root instead of using live-build's automatic live-root
+firmware discovery. Automatic discovery also selects `firmware-b43-installer` and
+`firmware-b43legacy-installer`; their post-installation scripts download and
+extract proprietary Broadcom payloads that the upstream firmware guidance says
+distributions may not redistribute. The stock b43 kernel drivers remain in the
+image. On hardware that requires those two payloads, the owner can install the
+matching installer package after installation with:
+
+```sh
+sudo cy install firmware-b43-installer
+# or, for the older driver family:
+sudo cy install firmware-b43legacy-installer
+```
+
+This legal boundary affects out-of-box firmware for those legacy Broadcom
+devices only. It does not remove any kernel driver or prevent the device owner
+from enabling the hardware.
+
+`firmware-ipw2x00` and `firmware-ivtv` contain their payloads, but their package
+scripts require the recipient to read and accept separate Intel or Hauppauge
+license terms. KythOS does not preaccept those terms for public-image users or
+preinstall the packages in the unattended live root. The Debian Installer can
+offer its signed firmware package pool interactively, and an installed-system
+owner can explicitly run:
+
+```sh
+sudo cy install firmware-ipw2x00
+sudo cy install firmware-ivtv
+```
+
+The corresponding stock kernel drivers remain present.
 
 ## Test sequence
 
@@ -41,4 +116,11 @@ temporary or installer-pool artifacts.
 6. Test on physical hardware before making any driver-support claim.
 
 The graphical installer is included for accessibility; it does not become a
-desktop environment in the installed base.
+desktop environment in the installed base. Its header uses original KythOS
+artwork through live-build's installer overlay. Debian Installer component,
+copyright, source, and license notices remain available where required.
+KythOS identity is written to both OS release files and both ISO disk labels.
+The distinct dpkg vendor inherits from Debian; signed Debian repository Origin,
+package copyright, and compatibility identifiers remain intact as provenance.
+The KythOS MIT license is included at both ISO roots and in the installed
+system.

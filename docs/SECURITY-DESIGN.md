@@ -12,8 +12,10 @@ also be signed because Secure Boot does not authenticate a downloaded ISO.
 
 ## Common controls
 
-- AppArmor remains enabled using Debian's supported kernel and package
-  profiles. Experimental blanket profiles are excluded.
+- AppArmor remains enabled on installed systems using supported kernel and
+  package profiles. Experimental blanket profiles are excluded. The stock
+  service intentionally skips the ephemeral live overlay; release evidence
+  records that live-session exception instead of presenting it as enforced.
 - Audit rules record changes to identity, sudo, APT, firewall, policy, and
   kernel module state without blocking those operations.
 - nftables drops unsolicited inbound traffic. Loopback, established traffic,
@@ -21,7 +23,7 @@ also be signed because Secure Boot does not authenticate a downloaded ISO.
   Editions own the forwarding and inbound exceptions required by their roles.
   Starting, reloading, or stopping the service only changes the KythOS-owned
   table; it does not flush tables installed by libvirt or container engines.
-- Debian's unattended updater installs authenticated stable and security
+- The unattended updater installs authenticated stable and security
   updates without forcing an automatic reboot or removing fallback kernels.
 - Persistent compressed journals have bounded disk and time retention.
 - Conservative sysctl settings reduce kernel pointer and log exposure and
@@ -35,9 +37,34 @@ virtualization extensions, packet-forwarding capability, core dumps, kexec,
 or debugging tools. Those controls can break a desktop, container host,
 hypervisor, or AI profiling workload and require edition-level testing.
 
-The base installs no SSH server and opens no inbound service port. Server and
-hypervisor editions must add explicit service rules. The AI and desktop
-editions must handle proprietary NVIDIA modules and MOK enrollment separately.
+Software-only encrypted LVM protects powered-off data, but its classic
+unencrypted `/boot` cannot authenticate the initramfs passphrase prompt. An
+attacker with physical write access can replace that prompt and capture the
+passphrase on the next normal boot. Operators must verify the boot files from
+trusted media after a device leaves their control.
+
+The base installs SSH with ordinary user password and public-key
+authentication, while prohibiting root and empty-password login. It opens no
+inbound service port; editions add explicit rules. The no-complexity/no-expiry
+password choice is a documented STIG deviation. NVIDIA drivers remain
+edition-selected and require DKMS/MOK enrollment under Secure Boot.
+
+The optional TPM2 unlock policy measures the UEFI boot path, GRUB commands,
+kernel command line, kernel, initramfs, and MOK state. A changed measurement
+blocks automatic key release. Enrollment requires the parsed event log to
+replay to every selected live PCR, checks GRUB kernel and initramfs events, and
+compares the boot files to the snapshot created before the required reboot.
+Recovery material is written only to detected removable storage on a different
+backing device and is flushed before the helper reports success. The classic
+shim and GRUB path does not
+authenticate the separate initramfs before it can ask for a fallback secret,
+so an unexpected passphrase prompt is treated as a physical-tampering event;
+the operator must power off and inspect the boot files from trusted media.
+
+The bundled OpenSSL FIPS provider configuration is opt-in and self-tested. It
+does not globally change cryptography and is not a claim that the complete
+operating system or Debian's rebuilt provider has a CMVP certificate. See the
+compliance document for the exact boundary and STIG deviations.
 
 The raw pre-release image installs KythOS policy files directly into the filesystem.
 Before the first supported public release, those files must move into a

@@ -1,0 +1,16 @@
+[Unit]
+Description=Initialize the KythOS AIDE integrity database
+Documentation=file:/usr/share/doc/aide/README.Debian.gz
+ConditionPathExists=!/var/lib/aide/aide.db
+ConditionPathExists=!/run/live/medium
+After=local-fs.target apt-daily-upgrade.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/kythos-aide-initialize
+Nice=10
+IOSchedulingClass=idle
+ProtectSystem=false
+
+[Install]
+WantedBy=multi-user.target

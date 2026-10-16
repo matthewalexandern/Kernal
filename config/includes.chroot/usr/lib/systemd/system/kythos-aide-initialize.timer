@@ -1,0 +1,11 @@
+[Unit]
+Description=Schedule initial KythOS AIDE database creation
+
+[Timer]
+OnBootSec=15min
+AccuracySec=5min
+Persistent=true
+Unit=kythos-aide-initialize.service
+
+[Install]
+WantedBy=timers.target

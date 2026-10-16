@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+umask 022
+
+version=$(cat ../VERSION)
+printf 'KythOS Kernal %s amd64 Binary\n' "$version" > .disk/info

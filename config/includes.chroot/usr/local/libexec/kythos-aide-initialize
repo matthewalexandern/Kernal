@@ -1,0 +1,17 @@
+#!/bin/sh
+set -eu
+umask 077
+
+if test -s /var/lib/aide/aide.db; then
+    exit 0
+fi
+
+/usr/sbin/aideinit --yes --force
+
+# aideinit normally promotes the new database. Preserve a compatible fallback
+# for package revisions that leave it as aide.db.new after a successful run.
+if test ! -s /var/lib/aide/aide.db && test -s /var/lib/aide/aide.db.new; then
+    mv /var/lib/aide/aide.db.new /var/lib/aide/aide.db
+fi
+
+test -s /var/lib/aide/aide.db

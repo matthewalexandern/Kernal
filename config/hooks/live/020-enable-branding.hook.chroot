@@ -1,0 +1,37 @@
+#!/bin/sh
+set -eu
+umask 022
+
+case "${SOURCE_DATE_EPOCH:-}" in
+    ''|*[!0-9]*)
+        printf '%s\n' 'SOURCE_DATE_EPOCH must be a decimal Unix timestamp.' >&2
+        exit 1
+        ;;
+esac
+
+build_id=$(date -u -d "@$SOURCE_DATE_EPOCH" +%Y%m%dT%H%M%SZ)
+os_release_temporary=$(mktemp)
+cat /usr/lib/os-release > "$os_release_temporary"
+{
+    printf 'IMAGE_ID=kythos-live\n'
+    printf 'BUILD_ID="%s"\n' "$build_id"
+} >> "$os_release_temporary"
+install -o root -g root -m 0644 "$os_release_temporary" /usr/lib/os-release
+install -o root -g root -m 0644 "$os_release_temporary" /etc/os-release
+rm -f -- "$os_release_temporary"
+
+install -d -o root -g root -m 0755 /etc/dpkg/origins
+cat > /etc/dpkg/origins/kythos <<'EOF'
+Vendor: KythOS
+Vendor-URL: https://github.com/matthewalexandern/Kernal
+Bugs: https://github.com/matthewalexandern/Kernal/issues
+Parent: Debian
+EOF
+chmod 0644 /etc/dpkg/origins/kythos
+ln -sfn kythos /etc/dpkg/origins/default
+
+plymouth-set-default-theme kythos
+
+# The theme and its password prompt must be present before an encrypted root
+# volume is unlocked. Rebuild every packaged initramfs after selecting it.
+update-initramfs -u -k all

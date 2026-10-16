@@ -1,0 +1,3 @@
+# Graphical boot with a visible encrypted-volume passphrase prompt.
+plymouth
+plymouth-themes

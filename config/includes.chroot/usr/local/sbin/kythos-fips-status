@@ -1,0 +1,39 @@
+#!/bin/sh
+set -eu
+
+config=/etc/ssl/kythos/openssl-fips.cnf
+module_config=/etc/ssl/kythos/fipsmodule.cnf
+module=$(find /usr/lib -type f -path '*/ossl-modules/fips.so' -print -quit)
+
+printf '%s\n' 'KythOS OpenSSL FIPS provider status'
+printf '%-28s %s\n' 'system-wide FIPS mode' 'not enabled'
+printf '%-28s %s\n' 'scope' 'opt-in OpenSSL provider only'
+
+test -n "$module"
+test -r "$config"
+test -r "$module_config"
+
+openssl fipsinstall -verify -module "$module" -in "$module_config"
+providers=$(OPENSSL_CONF="$config" openssl list -providers)
+printf '%s\n' "$providers"
+provider_is_active() {
+    printf '%s\n' "$providers" | awk -v wanted="$1" '
+        /^[[:space:]]+[[:alnum:]_-]+[[:space:]]*$/ { provider = $1 }
+        provider == wanted &&
+            /^[[:space:]]+status:[[:space:]]+active[[:space:]]*$/ { active = 1 }
+        END { exit(active ? 0 : 1) }
+    '
+}
+provider_is_active fips
+provider_is_active base
+if provider_is_active default; then
+    printf '%s\n' 'The default OpenSSL provider is active in the isolated context.' >&2
+    exit 1
+fi
+OPENSSL_CONF="$config" \
+    openssl dgst -propquery 'fips=yes' -sha256 /dev/null >/dev/null
+
+cat <<'EOF'
+Provider self-tests passed. This verifies this OpenSSL provider configuration;
+it is not evidence that the complete KythOS operating system is FIPS validated.
+EOF

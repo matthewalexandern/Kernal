@@ -1,0 +1,29 @@
+# Record security-relevant administrative actions without blocking them.
+-w /etc/localtime -p wa -k time_change
+-w /etc/hostname -p wa -k system_locale
+-w /etc/hosts -p wa -k system_locale
+-w /etc/issue -p wa -k system_locale
+-w /etc/issue.net -p wa -k system_locale
+-w /etc/login.defs -p wa -k authentication
+-w /etc/pam.d/ -p wa -k authentication
+-w /etc/security/ -p wa -k authentication
+-w /etc/ssh/sshd_config -p wa -k ssh_config
+-w /etc/ssh/sshd_config.d/ -p wa -k ssh_config
+-w /etc/NetworkManager/system-connections/ -p wa -k network_config
+
+-a always,exit -F arch=b64 -S adjtimex,settimeofday -k time_change
+-a always,exit -F arch=b64 -S clock_settime -F a0=0 -k time_change
+-a always,exit -F arch=b32 -S adjtimex,settimeofday -k time_change
+-a always,exit -F arch=b32 -S clock_settime -F a0=0 -k time_change
+-a always,exit -F arch=b64 -S sethostname,setdomainname -k system_locale
+-a always,exit -F arch=b32 -S sethostname,setdomainname -k system_locale
+-a always,exit -F arch=b64 -S mount,umount2 -F auid>=1000 -F auid!=unset -k mounts
+-a always,exit -F arch=b32 -S mount,umount2 -F auid>=1000 -F auid!=unset -k mounts
+-a always,exit -F path=/usr/bin/mount -F perm=x -F auid>=1000 -F auid!=unset -k mounts
+-a always,exit -F path=/usr/bin/umount -F perm=x -F auid>=1000 -F auid!=unset -k mounts
+-a always,exit -F arch=b64 -S init_module,finit_module,delete_module -F auid>=1000 -F auid!=unset -k kernel_modules
+-a always,exit -F arch=b32 -S init_module,finit_module,delete_module -F auid>=1000 -F auid!=unset -k kernel_modules
+-a always,exit -F arch=b64 -S execve -C euid!=uid -F auid>=1000 -F auid!=unset -k privileged
+-a always,exit -F arch=b32 -S execve -C euid!=uid -F auid>=1000 -F auid!=unset -k privileged
+-a always,exit -F arch=b64 -S execve -C egid!=gid -F auid>=1000 -F auid!=unset -k privileged
+-a always,exit -F arch=b32 -S execve -C egid!=gid -F auid>=1000 -F auid!=unset -k privileged

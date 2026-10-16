@@ -1,0 +1,215 @@
+#!/bin/sh
+set -eu
+umask 022
+
+# live-build's missing-source report covers the live root, but it does not
+# account for every Debian Installer and firmware-pool binary copied to the
+# binary ISO. Bootloader files can also be extracted from cached binary-input
+# packages without placing those .deb files in the pool, so inventory them too.
+binary_manifest=binary-source-manifest.tsv
+required_tuples=$(mktemp ./required-source.XXXXXXXXXX)
+provided_tuples=$(mktemp ./provided-source.XXXXXXXXXX)
+missing_tuples=$(mktemp ./missing-source.XXXXXXXXXX)
+snapshot=$(cat ../SNAPSHOT)
+snapshot_metadata_directory=../snapshot-InRelease
+snapshot_metadata_sums=../snapshot-InRelease-SHA256SUMS
+cleanup()
+{
+    rm -f -- "$required_tuples" "$provided_tuples" "$missing_tuples"
+}
+trap cleanup EXIT HUP INT TERM
+
+# Preserve the exact signed snapshot metadata while live-build still has the
+# source-stage archive configuration active. Later cleanup restores the current
+# binary mirrors, whose list files must not be presented as snapshot evidence.
+rm -rf -- "$snapshot_metadata_directory"
+install -d -m 0755 "$snapshot_metadata_directory"
+snapshot_metadata_files=$(find ../chroot/var/lib/apt/lists -maxdepth 1 \
+    -type f -name '*InRelease' -print | LC_ALL=C sort)
+test -n "$snapshot_metadata_files"
+seen_debian=false
+seen_security=false
+for snapshot_metadata_file in $snapshot_metadata_files
+do
+    snapshot_metadata_name=$(basename -- "$snapshot_metadata_file")
+    case "$snapshot_metadata_name" in
+        snapshot.debian.org_archive_debian_"$snapshot"_dists_*_InRelease)
+            seen_debian=true
+            ;;
+        snapshot.debian.org_archive_debian-security_"$snapshot"_dists_*_InRelease)
+            seen_security=true
+            ;;
+        *)
+            printf 'Unexpected source-stage InRelease file: %s\n' \
+                "$snapshot_metadata_name" >&2
+            exit 1
+            ;;
+    esac
+    install -m 0644 "$snapshot_metadata_file" \
+        "$snapshot_metadata_directory/$snapshot_metadata_name"
+done
+test "$seen_debian" = true && test "$seen_security" = true
+(
+    cd "$snapshot_metadata_directory"
+    find . -maxdepth 1 -type f -name '*InRelease' -print0 \
+        | LC_ALL=C sort -z | xargs -0 sha256sum
+) > "$snapshot_metadata_sums"
+test -s "$snapshot_metadata_sums"
+
+printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+    kind binary_or_path binary_version source source_version sha256 \
+    > "$binary_manifest"
+
+chroot ../chroot dpkg-query -W \
+    -f='live-root\t${binary:Package}\t${Version}\t${source:Package}\t${source:Version}\t-\n' \
+    | LC_ALL=C sort -u >> "$binary_manifest"
+
+find ../binary/pool ../binary/pool-udeb ../cache/packages.binary -type f \
+    \( -name '*.deb' -o -name '*.udeb' \) -print \
+    | LC_ALL=C sort | while IFS= read -r binary_package
+do
+    package_name=$(dpkg-deb -f "$binary_package" Package)
+    binary_version=$(dpkg-deb -f "$binary_package" Version)
+    source_field=$(dpkg-deb -f "$binary_package" Source 2>/dev/null || true)
+    if test -n "$source_field"; then
+        source_name=$(printf '%s\n' "$source_field" \
+            | sed 's/[[:space:]].*$//')
+        case "$source_field" in
+            *' ('*')')
+                source_version=${source_field#* (}
+                source_version=${source_version%)}
+                ;;
+            *)
+                source_version=$(printf '%s\n' "$binary_version" \
+                    | sed 's/+b[0-9][0-9]*$//')
+                ;;
+        esac
+    else
+        source_name=$package_name
+        source_version=$(printf '%s\n' "$binary_version" \
+            | sed 's/+b[0-9][0-9]*$//')
+    fi
+    printf '%s\n' "$source_name" \
+        | grep -Eq '^[a-z0-9][a-z0-9+.-]+$'
+    test -n "$source_version"
+    case "$binary_package" in
+        ../binary/*)
+            manifest_kind=iso-pool
+            package_path=${binary_package#../binary/}
+            ;;
+        ../cache/packages.binary/*)
+            manifest_kind=binary-input
+            package_path=cache/packages.binary/${binary_package#../cache/packages.binary/}
+            ;;
+        *)
+            printf 'Unexpected binary package path: %s\n' \
+                "$binary_package" >&2
+            exit 1
+            ;;
+    esac
+    package_sha256=$(sha256sum "$binary_package" | awk '{ print $1 }')
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$manifest_kind" "$package_path" "$binary_version" "$source_name" \
+        "$source_version" "$package_sha256"
+done >> "$binary_manifest"
+
+{
+    IFS="$(printf '\t')"
+    tail -n +2 "$binary_manifest" \
+        | while read -r _kind _binary _binary_version source_name source_version _sha256
+        do
+            printf '%s\t%s\n' "$source_name" "$source_version"
+        done
+} | LC_ALL=C sort -u > "$required_tuples"
+
+index_provided_sources()
+{
+    find debian -type f -name '*.dsc' -print \
+        | LC_ALL=C sort | while IFS= read -r dsc
+    do
+        source_name=$(sed -n 's/^Source: //p' "$dsc")
+        source_version=$(sed -n 's/^Version: //p' "$dsc")
+        test -n "$source_name" && test -n "$source_version"
+        printf '%s\t%s\n' "$source_name" "$source_version"
+    done | LC_ALL=C sort -u
+}
+
+index_provided_sources > "$provided_tuples"
+comm -23 "$required_tuples" "$provided_tuples" > "$missing_tuples"
+
+if test -s "$missing_tuples"; then
+    chroot_download=/tmp/kythos-required-source
+    rm -rf "../chroot$chroot_download"
+    install -d -m 0755 "../chroot$chroot_download"
+    chroot ../chroot chown _apt:root "$chroot_download"
+    chroot ../chroot chmod 0750 "$chroot_download"
+
+    set --
+    IFS="$(printf '\t')"
+    while read -r source_name source_version
+    do
+        set -- "$@" "$source_name=$source_version"
+    done < "$missing_tuples"
+    unset IFS
+
+    download_complete=false
+    for download_attempt in 1 2 3
+    do
+        if chroot ../chroot /bin/sh -eu -c '
+            cd "$1"
+            shift
+            apt-get -o Acquire::Retries=5 --only-source --download-only \
+                source "$@"
+        ' kythos-source-download "$chroot_download" "$@"; then
+            download_complete=true
+            break
+        fi
+        sleep $((download_attempt * 5))
+    done
+    test "$download_complete" = true
+
+    install -d -m 0755 debian/kythos-required
+    mv "../chroot$chroot_download"/* debian/kythos-required/
+    chown -R 0:0 debian/kythos-required
+    rmdir "../chroot$chroot_download"
+fi
+
+# The source ISO must contain every exact source/version tuple for the live
+# root, the binary ISO package pools, and extracted bootloader binary inputs.
+index_provided_sources > "$provided_tuples"
+comm -23 "$required_tuples" "$provided_tuples" > "$missing_tuples"
+if test -s "$missing_tuples"; then
+    printf '%s\n' 'Exact source versions are still missing:' >&2
+    cat "$missing_tuples" >&2
+    exit 1
+fi
+
+cp "$required_tuples" required-source-tuples.tsv
+cp ../LICENSE LICENSE
+version=$(cat ../VERSION)
+printf 'KythOS Kernal %s amd64 source\n' "$version" > .disk/info
+
+# Accept live-build's report only when it contains its five-line explanation
+# and the expected blank sixth line, with no missing-package entries after it.
+# This separately covers bootloader and image-tool sources that are outside
+# the live-root and ISO package-pool inventory above.
+if test -f missing-source.txt; then
+    expected_header=$(cat <<'EOF'
+This file contains the list of binary packages that are installed on the "live"
+system (to which this source disc is a companion) for which a corresponding
+source package is not included on this disc. This may be because the binary
+package does not have a corresponding source package, or because the version of
+the source package available was not the same as that of the binary.
+EOF
+    )
+    report_lines=$(wc -l < missing-source.txt)
+    actual_header=$(sed -n '1,5p' missing-source.txt)
+    sixth_line=$(sed -n '6p' missing-source.txt)
+    test "$report_lines" -eq 6
+    test "$actual_header" = "$expected_header"
+    test -z "$sixth_line"
+    rm -f missing-source.txt
+fi
+
+cleanup
+trap - EXIT HUP INT TERM

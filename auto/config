@@ -8,6 +8,13 @@ if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.+~-][0-9A-Za
     echo 'VERSION must contain a valid release version.' >&2
     exit 2
 fi
+snapshot=$(cat "$repo_root/SNAPSHOT")
+if ! printf '%s\n' "$snapshot" | grep -Eq '^[0-9]{8}T[0-9]{6}Z$'; then
+    echo 'SNAPSHOT must contain a UTC snapshot.debian.org timestamp.' >&2
+    exit 2
+fi
+snapshot_debian="https://snapshot.debian.org/archive/debian/$snapshot/"
+snapshot_security="https://snapshot.debian.org/archive/debian-security/$snapshot/"
 
 if test "$#" -ne 0; then
     echo 'Kernal base does not accept lb config overrides.' >&2
@@ -24,12 +31,13 @@ lb config noauto \
     --bootloaders 'syslinux,grub-efi' \
     --archive-areas 'main contrib non-free non-free-firmware' \
     --apt-secure true \
+    --apt-options '--yes -o Acquire::Check-Valid-Until=false' \
     --apt-recommends true \
     --apt-source-archives false \
     --security true \
     --updates true \
     --backports false \
-    --firmware-chroot true \
+    --firmware-chroot false \
     --firmware-binary true \
     --linux-flavours amd64 \
     --linux-packages linux-image \
@@ -41,13 +49,13 @@ lb config noauto \
     --source-images iso \
     --checksums sha256 \
     --utc-time true \
-    --mirror-bootstrap 'https://deb.debian.org/debian/' \
-    --mirror-chroot 'https://deb.debian.org/debian/' \
-    --mirror-chroot-security 'https://security.debian.org/debian-security/' \
+    --mirror-bootstrap "$snapshot_debian" \
+    --mirror-chroot "$snapshot_debian" \
+    --mirror-chroot-security "$snapshot_security" \
     --mirror-binary 'https://deb.debian.org/debian/' \
     --mirror-binary-security 'https://security.debian.org/debian-security/' \
-    --mirror-debian-installer 'https://deb.debian.org/debian/' \
-    --bootappend-live 'boot=live components audit=1 audit_backlog_limit=8192 hostname=kythos-live username=kythos-live locales=en_US.UTF-8 keyboard-layouts=us console=tty0 console=ttyS0,115200n8' \
+    --mirror-debian-installer "$snapshot_debian" \
+    --bootappend-live 'boot=live components quiet splash audit=1 audit_backlog_limit=8192 hostname=kythos-live username=kythos-live locales=en_US.UTF-8 keyboard-layouts=us console=tty0 console=ttyS0,115200n8' \
     --iso-application 'KythOS Kernal' \
     --iso-publisher 'KythOS' \
     --iso-volume 'KYTHOS_KERNAL' \

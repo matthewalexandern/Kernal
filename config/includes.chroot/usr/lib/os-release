@@ -1,0 +1,14 @@
+PRETTY_NAME="KythOS Kernal 0.1.0"
+NAME="KythOS Kernal"
+VERSION_ID="0.1.0"
+VERSION="0.1.0 (Debian 13 trixie compatible)"
+VERSION_CODENAME=trixie
+ID=kythos
+ID_LIKE=debian
+VARIANT="KythOS Kernal"
+VARIANT_ID=kythos
+KYTHOS_VERSION_ID="0.1.0"
+DEBIAN_VERSION_ID="13"
+HOME_URL="https://github.com/matthewalexandern/Kernal"
+SUPPORT_URL="https://github.com/matthewalexandern/Kernal/issues"
+BUG_REPORT_URL="https://github.com/matthewalexandern/Kernal/issues"

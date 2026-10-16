@@ -1,0 +1,8 @@
+# File-integrity monitoring and its local scheduler/report frontend.
+aide-common
+cron
+s-nail
+
+# Included for an isolated, opt-in OpenSSL FIPS provider context. This does not
+# by itself make the complete operating system FIPS validated.
+openssl-provider-fips

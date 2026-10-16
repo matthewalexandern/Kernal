@@ -1,22 +1,204 @@
 #!/bin/sh
 set -u
 
-printf '%s\n' 'KythOS Kernal security status'
-if test -r /usr/share/kythos/version; then
-    printf '%-28s %s\n' 'version' "$(cat /usr/share/kythos/version)"
+failures=0
+warnings=0
+
+pass()
+{
+    printf 'PASS  %-27s %s\n' "$1" "$2"
+}
+
+fail()
+{
+    printf 'FAIL  %-27s %s\n' "$1" "$2"
+    failures=$((failures + 1))
+}
+
+warn()
+{
+    printf 'WARN  %-27s %s\n' "$1" "$2"
+    warnings=$((warnings + 1))
+}
+
+info()
+{
+    printf 'INFO  %-27s %s\n' "$1" "$2"
+}
+
+if test "$(id -u)" -ne 0; then
+    printf '%s\n' 'Run this command with sudo so audit and policy state can be read.' >&2
+    exit 2
 fi
-printf 'kernel: '
-uname -r
+
+printf '%s\n' 'KythOS Kernal baseline health check'
+if test -r /usr/share/kythos/version; then
+    info version "$(cat /usr/share/kythos/version)"
+fi
+info kernel "$(uname -r)"
+
+live_session=false
+if test -e /run/live/medium || test -e /run/live/overlay; then
+    live_session=true
+    info environment 'live session'
+else
+    info environment 'installed system'
+fi
 
 if command -v mokutil >/dev/null 2>&1; then
-    mokutil --sb-state 2>/dev/null || printf '%s\n' 'Secure Boot state unavailable'
+    secure_boot=$(mokutil --sb-state 2>/dev/null || true)
+    info 'Secure Boot' "${secure_boot:-state unavailable}"
 fi
 
-for unit in apparmor.service auditd.service nftables.service apt-daily-upgrade.timer; do
-    unit_state=$(systemctl is-enabled "$unit" 2>/dev/null) || unit_state=disabled
-    printf '%-28s %s\n' "$unit" "$unit_state"
+kernel_argument()
+{
+    awk -v wanted="$1" '
+        {
+            for (field = 1; field <= NF; field++) {
+                prefix = wanted "="
+                if (index($field, prefix) == 1)
+                    value = substr($field, length(prefix) + 1)
+            }
+        }
+        END { print value }
+    ' /proc/cmdline
+}
+
+audit_enabled=$(kernel_argument audit)
+audit_backlog=$(kernel_argument audit_backlog_limit)
+if test "$audit_enabled" = 1 && test "$audit_backlog" = 8192; then
+    pass 'early audit' 'kernel command line enabled'
+else
+    fail 'early audit' \
+        "effective audit=${audit_enabled:-unset}; audit_backlog_limit=${audit_backlog:-unset}"
+fi
+
+for unit in auditd.service nftables.service apt-daily-upgrade.timer; do
+    if systemctl is-active --quiet "$unit"; then
+        pass "$unit" active
+    else
+        fail "$unit" "$(systemctl is-active "$unit" 2>/dev/null || printf inactive)"
+    fi
 done
 
-printf '%-28s %s\n' 'AppArmor' "$(aa-enabled --quiet 2>/dev/null && printf enabled || printf unavailable)"
-printf '%-28s %s\n' 'KythOS nftables table' "$(nft list table inet kythos_filter >/dev/null 2>&1 && printf loaded || printf unavailable)"
-printf '%-28s %s\n' 'automatic upgrades' "$(apt-config dump 2>/dev/null | grep -q 'APT::Periodic::Unattended-Upgrade "1"' && printf enabled || printf disabled)"
+if test "$live_session" = true; then
+    ssh_state=$(systemctl is-active ssh.service 2>/dev/null || true)
+    if test "$ssh_state" = inactive; then
+        pass ssh.service 'inactive in the live session'
+    else
+        fail ssh.service "expected inactive in live session; found ${ssh_state:-unknown}"
+    fi
+elif systemctl is-active --quiet ssh.service; then
+    pass ssh.service active
+else
+    fail ssh.service "$(systemctl is-active ssh.service 2>/dev/null || printf inactive)"
+fi
+
+if systemctl is-active --quiet apparmor.service \
+    && test -s /sys/kernel/security/apparmor/profiles; then
+    pass AppArmor 'service active; profiles loaded'
+elif test "$live_session" = true; then
+    warn AppArmor 'live overlay exception; installed system must enforce'
+else
+    fail AppArmor 'service inactive or no profiles loaded'
+fi
+
+if auditctl -s 2>/dev/null | grep -Eq '^enabled[[:space:]]+1$' \
+    && auditctl -l 2>/dev/null | grep -q 'identity' \
+    && auditctl -l 2>/dev/null | grep -q 'kernel_modules'; then
+    pass 'audit rules' 'enabled; identity and module rules loaded'
+else
+    fail 'audit rules' 'required rules are not loaded'
+fi
+
+if nft list chain inet kythos_filter input 2>/dev/null \
+    | grep -q 'policy drop'; then
+    pass 'KythOS firewall' 'inbound policy drop'
+else
+    fail 'KythOS firewall' 'input chain is missing or not default drop'
+fi
+
+if apt-config dump 2>/dev/null \
+    | grep -q 'APT::Periodic::Unattended-Upgrade "1"'; then
+    pass 'automatic upgrades' enabled
+else
+    fail 'automatic upgrades' disabled
+fi
+
+if test "$live_session" = true; then
+    warn 'persistent journal' 'live overlay is ephemeral'
+elif test -d /var/log/journal; then
+    pass 'persistent journal' /var/log/journal
+else
+    fail 'persistent journal' 'directory is missing'
+fi
+
+if systemctl is-active --quiet dailyaidecheck.timer; then
+    if test -s /var/lib/aide/aide.db; then
+        pass AIDE 'daily timer active; database present'
+    else
+        warn AIDE 'initial database is pending'
+    fi
+else
+    fail AIDE 'daily integrity timer is inactive'
+fi
+
+for setting in \
+    'kernel.dmesg_restrict=1' \
+    'kernel.kptr_restrict=1' \
+    'kernel.randomize_va_space=2' \
+    'fs.suid_dumpable=0' \
+    'net.ipv4.tcp_syncookies=1'
+do
+    key=${setting%%=*}
+    expected=${setting#*=}
+    actual=$(sysctl -n "$key" 2>/dev/null || true)
+    if test "$actual" = "$expected"; then
+        pass "$key" "$actual"
+    else
+        fail "$key" "expected $expected; found ${actual:-unavailable}"
+    fi
+done
+
+if command -v sshd >/dev/null 2>&1; then
+    ordinary_ssh_config=$(sshd -T \
+        -C user=kythos-policy-check,host=localhost,addr=127.0.0.1,laddr=127.0.0.1,lport=22 \
+        2>/dev/null || true)
+    root_ssh_config=$(sshd -T \
+        -C user=root,host=localhost,addr=127.0.0.1,laddr=127.0.0.1,lport=22 \
+        2>/dev/null || true)
+    if printf '%s\n' "$ordinary_ssh_config" \
+        | grep -qx 'passwordauthentication yes'; then
+        pass 'SSH password auth' allowed
+    else
+        fail 'SSH password auth' 'not enabled as requested'
+    fi
+    if printf '%s\n' "$root_ssh_config" | grep -qx 'permitrootlogin no' \
+        && printf '%s\n' "$root_ssh_config" | grep -qx 'permitemptypasswords no' \
+        && printf '%s\n' "$root_ssh_config" | grep -qx 'permituserenvironment no' \
+        && printf '%s\n' "$ordinary_ssh_config" | grep -qx 'permitemptypasswords no' \
+        && printf '%s\n' "$ordinary_ssh_config" | grep -qx 'permituserenvironment no'; then
+        pass 'SSH root/empty login' prohibited
+    else
+        fail 'SSH root/empty login' 'unsafe effective SSH configuration'
+    fi
+    if nft list chain inet kythos_filter input 2>/dev/null \
+        | grep -Eq 'tcp dport (22|ssh).*accept'; then
+        info 'SSH network exposure' 'port 22 allowed by edition policy'
+    else
+        pass 'SSH network exposure' 'blocked by common-base firewall'
+    fi
+fi
+
+if test -r /etc/ssl/kythos/fipsmodule.cnf; then
+    if kythos-fips-status >/dev/null 2>&1; then
+        pass 'OpenSSL FIPS provider' 'opt-in self-test passed'
+    else
+        fail 'OpenSSL FIPS provider' 'opt-in provider self-test failed'
+    fi
+else
+    fail 'OpenSSL FIPS provider' 'configuration missing'
+fi
+
+printf '\nHealth check summary: %s failure(s), %s warning(s).\n' "$failures" "$warnings"
+test "$failures" -eq 0
