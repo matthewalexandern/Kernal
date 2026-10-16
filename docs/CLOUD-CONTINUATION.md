@@ -2,16 +2,21 @@
 
 The source repository is private:
 `https://github.com/matthewalexandern/Kernal.git`. The actual ISO delivery is
-attached to this [private draft release](https://github.com/matthewalexandern/Kernal/releases/tag/untagged-8ce97e886a27b428c21e):
+attached to this [private draft release](https://github.com/matthewalexandern/Kernal/releases/tag/untagged-5cf042ef7cdf26cd7f7d):
 
-- Pending tag: `v0.1.0-preview-cc472f5`.
+- Tag: `v0.1.0-preview-cc472f5`.
 - Release ID: `415294757`.
 - Package source bundle and release target:
   `da48e63b5a72ec49631aa98bb5d078eb5d6d9582`.
 
 Each device or cloud environment needs its own authenticated GitHub access.
-Viewing or downloading this draft requires draft access. A release existing
-does not establish that its uploads have finished.
+Viewing or downloading this draft requires draft access.
+
+Delivery completed on 2026-10-16: all 14 assets (12,765,274,773 bytes) were
+independently downloaded in full and SHA256 verified. A separate final API
+check confirmed the same asset IDs, sizes and digests, and the remote version
+tag points to the exact release target above. See the
+[verified delivery receipt](deliveries/2026-10-16-cc472f5.json).
 
 ## Check and download the delivery
 

@@ -1,0 +1,208 @@
+{
+  "asset_count": 14,
+  "assets": [
+    {
+      "bytes": 2001469440,
+      "download_url": "https://github.com/matthewalexandern/Kernal/releases/download/untagged-5cf042ef7cdf26cd7f7d/kythos-kernal-base-0.1.0-amd64.hybrid.iso",
+      "downloaded_bytes_verified": 2001469440,
+      "downloaded_sha256_verified": "06c0e9619de021daabd59b7e7f28ef5961aa4563a98aad7ad62f48001ea5ccf8",
+      "github_asset_id": 648325423,
+      "github_digest": "sha256:06c0e9619de021daabd59b7e7f28ef5961aa4563a98aad7ad62f48001ea5ccf8",
+      "kind": "binary-iso",
+      "name": "kythos-kernal-base-0.1.0-amd64.hybrid.iso",
+      "sha256": "06c0e9619de021daabd59b7e7f28ef5961aa4563a98aad7ad62f48001ea5ccf8"
+    },
+    {
+      "bytes": 1900000000,
+      "download_url": "https://github.com/matthewalexandern/Kernal/releases/download/untagged-5cf042ef7cdf26cd7f7d/kythos-kernal-base-0.1.0-amd64-source.iso.part01",
+      "downloaded_bytes_verified": 1900000000,
+      "downloaded_sha256_verified": "1ac513ea82c5dc0e39722292406e478e506c2512ed2495e239ef0fe5acba870f",
+      "github_asset_id": 648325421,
+      "github_digest": "sha256:1ac513ea82c5dc0e39722292406e478e506c2512ed2495e239ef0fe5acba870f",
+      "kind": "source-iso-part",
+      "name": "kythos-kernal-base-0.1.0-amd64-source.iso.part01",
+      "sha256": "1ac513ea82c5dc0e39722292406e478e506c2512ed2495e239ef0fe5acba870f"
+    },
+    {
+      "bytes": 1900000000,
+      "download_url": "https://github.com/matthewalexandern/Kernal/releases/download/untagged-5cf042ef7cdf26cd7f7d/kythos-kernal-base-0.1.0-amd64-source.iso.part02",
+      "downloaded_bytes_verified": 1900000000,
+      "downloaded_sha256_verified": "ff33edc949775bce32f6610a9c4e1de86d6c3143c19e961b5708cc98fcb09684",
+      "github_asset_id": 648359731,
+      "github_digest": "sha256:ff33edc949775bce32f6610a9c4e1de86d6c3143c19e961b5708cc98fcb09684",
+      "kind": "source-iso-part",
+      "name": "kythos-kernal-base-0.1.0-amd64-source.iso.part02",
+      "sha256": "ff33edc949775bce32f6610a9c4e1de86d6c3143c19e961b5708cc98fcb09684"
+    },
+    {
+      "bytes": 543633920,
+      "download_url": "https://github.com/matthewalexandern/Kernal/releases/download/untagged-5cf042ef7cdf26cd7f7d/kythos-kernal-base-0.1.0-amd64-source.iso.part03",
+      "downloaded_bytes_verified": 543633920,
+      "downloaded_sha256_verified": "7579ae0a63e96b8c2510ca01fd218a33d85a5512034deafe1a50332149d0bb57",
+      "github_asset_id": 648360708,
+      "github_digest": "sha256:7579ae0a63e96b8c2510ca01fd218a33d85a5512034deafe1a50332149d0bb57",
+      "kind": "source-iso-part",
+      "name": "kythos-kernal-base-0.1.0-amd64-source.iso.part03",
+      "sha256": "7579ae0a63e96b8c2510ca01fd218a33d85a5512034deafe1a50332149d0bb57"
+    },
+    {
+      "bytes": 2078701568,
+      "download_url": "https://github.com/matthewalexandern/Kernal/releases/download/untagged-5cf042ef7cdf26cd7f7d/kythos-kernal-base-0.1.0-arm64.hybrid.iso",
+      "downloaded_bytes_verified": 2078701568,
+      "downloaded_sha256_verified": "b27a511580222ecd16ec1806b385945dd2b67ab78ab9fa6a60c0ff4d69005646",
+      "github_asset_id": 648371252,
+      "github_digest": "sha256:b27a511580222ecd16ec1806b385945dd2b67ab78ab9fa6a60c0ff4d69005646",
+      "kind": "binary-iso",
+      "name": "kythos-kernal-base-0.1.0-arm64.hybrid.iso",
+      "sha256": "b27a511580222ecd16ec1806b385945dd2b67ab78ab9fa6a60c0ff4d69005646"
+    },
+    {
+      "bytes": 1900000000,
+      "download_url": "https://github.com/matthewalexandern/Kernal/releases/download/untagged-5cf042ef7cdf26cd7f7d/kythos-kernal-base-0.1.0-arm64-source.iso.part01",
+      "downloaded_bytes_verified": 1900000000,
+      "downloaded_sha256_verified": "97b5f98f73a1ddb57399851ffca5d8b7fcaf2a40bf0156d80fe847c74d0f2cd6",
+      "github_asset_id": 648389389,
+      "github_digest": "sha256:97b5f98f73a1ddb57399851ffca5d8b7fcaf2a40bf0156d80fe847c74d0f2cd6",
+      "kind": "source-iso-part",
+      "name": "kythos-kernal-base-0.1.0-arm64-source.iso.part01",
+      "sha256": "97b5f98f73a1ddb57399851ffca5d8b7fcaf2a40bf0156d80fe847c74d0f2cd6"
+    },
+    {
+      "bytes": 1900000000,
+      "download_url": "https://github.com/matthewalexandern/Kernal/releases/download/untagged-5cf042ef7cdf26cd7f7d/kythos-kernal-base-0.1.0-arm64-source.iso.part02",
+      "downloaded_bytes_verified": 1900000000,
+      "downloaded_sha256_verified": "b45336aa2cb7a105f9f25eb69d586a04ad7a78da1902c0c9cb65fd0d0f13034e",
+      "github_asset_id": 648402913,
+      "github_digest": "sha256:b45336aa2cb7a105f9f25eb69d586a04ad7a78da1902c0c9cb65fd0d0f13034e",
+      "kind": "source-iso-part",
+      "name": "kythos-kernal-base-0.1.0-arm64-source.iso.part02",
+      "sha256": "b45336aa2cb7a105f9f25eb69d586a04ad7a78da1902c0c9cb65fd0d0f13034e"
+    },
+    {
+      "bytes": 528081408,
+      "download_url": "https://github.com/matthewalexandern/Kernal/releases/download/untagged-5cf042ef7cdf26cd7f7d/kythos-kernal-base-0.1.0-arm64-source.iso.part03",
+      "downloaded_bytes_verified": 528081408,
+      "downloaded_sha256_verified": "819326a1f8aee4fb68bac865f9fbe4d6f8c461e48495f33d0cf115c8ce04967c",
+      "github_asset_id": 648410889,
+      "github_digest": "sha256:819326a1f8aee4fb68bac865f9fbe4d6f8c461e48495f33d0cf115c8ce04967c",
+      "kind": "source-iso-part",
+      "name": "kythos-kernal-base-0.1.0-arm64-source.iso.part03",
+      "sha256": "819326a1f8aee4fb68bac865f9fbe4d6f8c461e48495f33d0cf115c8ce04967c"
+    },
+    {
+      "bytes": 5975963,
+      "download_url": "https://github.com/matthewalexandern/Kernal/releases/download/untagged-5cf042ef7cdf26cd7f7d/Kernal-noreply-da48e63.bundle",
+      "downloaded_bytes_verified": 5975963,
+      "downloaded_sha256_verified": "672cad7adb86dbd9b465f29d849e1495b302ef25c42d783fef6ca65e7234ac67",
+      "github_asset_id": 648324089,
+      "github_digest": "sha256:672cad7adb86dbd9b465f29d849e1495b302ef25c42d783fef6ca65e7234ac67",
+      "kind": "source-git-bundle",
+      "name": "Kernal-noreply-da48e63.bundle",
+      "sha256": "672cad7adb86dbd9b465f29d849e1495b302ef25c42d783fef6ca65e7234ac67"
+    },
+    {
+      "bytes": 96,
+      "download_url": "https://github.com/matthewalexandern/Kernal/releases/download/untagged-5cf042ef7cdf26cd7f7d/Kernal-noreply-da48e63.bundle.sha256",
+      "downloaded_bytes_verified": 96,
+      "downloaded_sha256_verified": "9d110c6ba97f642bd82392a77c0a56a8156f6199a6473a2c2180fc9807c9b241",
+      "github_asset_id": 648324305,
+      "github_digest": "sha256:9d110c6ba97f642bd82392a77c0a56a8156f6199a6473a2c2180fc9807c9b241",
+      "kind": "bundle-checksum",
+      "name": "Kernal-noreply-da48e63.bundle.sha256",
+      "sha256": "9d110c6ba97f642bd82392a77c0a56a8156f6199a6473a2c2180fc9807c9b241"
+    },
+    {
+      "bytes": 7403364,
+      "download_url": "https://github.com/matthewalexandern/Kernal/releases/download/untagged-5cf042ef7cdf26cd7f7d/metadata.tar.gz",
+      "downloaded_bytes_verified": 7403364,
+      "downloaded_sha256_verified": "4adf89bcc37ea09bd85dfe4dcc35e5ee079798c6c180a9356d08a97eeba20eb1",
+      "github_asset_id": 648324397,
+      "github_digest": "sha256:4adf89bcc37ea09bd85dfe4dcc35e5ee079798c6c180a9356d08a97eeba20eb1",
+      "kind": "public-metadata-archive",
+      "name": "metadata.tar.gz",
+      "sha256": "4adf89bcc37ea09bd85dfe4dcc35e5ee079798c6c180a9356d08a97eeba20eb1"
+    },
+    {
+      "bytes": 444,
+      "download_url": "https://github.com/matthewalexandern/Kernal/releases/download/untagged-5cf042ef7cdf26cd7f7d/ISO-SHA256SUMS",
+      "downloaded_bytes_verified": 444,
+      "downloaded_sha256_verified": "3360f0a75a5699ffe0ec2eb93659483db3c01fe5290c9645d13a5f2638a43fd3",
+      "github_asset_id": 648325125,
+      "github_digest": "sha256:3360f0a75a5699ffe0ec2eb93659483db3c01fe5290c9645d13a5f2638a43fd3",
+      "kind": "complete-iso-checksums",
+      "name": "ISO-SHA256SUMS",
+      "sha256": "3360f0a75a5699ffe0ec2eb93659483db3c01fe5290c9645d13a5f2638a43fd3"
+    },
+    {
+      "bytes": 7219,
+      "download_url": "https://github.com/matthewalexandern/Kernal/releases/download/untagged-5cf042ef7cdf26cd7f7d/CLOUD-HANDOFF.md",
+      "downloaded_bytes_verified": 7219,
+      "downloaded_sha256_verified": "09c5d58fa54b4f1f420cafc130b89e23f5e8463750f06fc5f2d63fec01450662",
+      "github_asset_id": 648325236,
+      "github_digest": "sha256:09c5d58fa54b4f1f420cafc130b89e23f5e8463750f06fc5f2d63fec01450662",
+      "kind": "cloud-handoff",
+      "name": "CLOUD-HANDOFF.md",
+      "sha256": "09c5d58fa54b4f1f420cafc130b89e23f5e8463750f06fc5f2d63fec01450662"
+    },
+    {
+      "bytes": 1351,
+      "download_url": "https://github.com/matthewalexandern/Kernal/releases/download/untagged-5cf042ef7cdf26cd7f7d/SHA256SUMS",
+      "downloaded_bytes_verified": 1351,
+      "downloaded_sha256_verified": "ac90b9ba21c0367c4a21ef2c881e5c1a5542f2fcfab1db20a1d047ac33985108",
+      "github_asset_id": 648325329,
+      "github_digest": "sha256:ac90b9ba21c0367c4a21ef2c881e5c1a5542f2fcfab1db20a1d047ac33985108",
+      "kind": "asset-checksums",
+      "name": "SHA256SUMS",
+      "sha256": "ac90b9ba21c0367c4a21ef2c881e5c1a5542f2fcfab1db20a1d047ac33985108"
+    }
+  ],
+  "cloud_provisioning": "No cloud host or task was provisioned; this delivery supports continuation elsewhere",
+  "draft": true,
+  "identical_source_tree": "37f88c56b3f569b64840df58cd24277eec09cfde",
+  "image_source_commit": "cc472f571c2784a105ee12e5df408275ef14fa37",
+  "noreply_equivalent_source_commit": "56a1b71c023beef9c6a2db4b57cb2c5d5ccd1516",
+  "prerelease": true,
+  "private": true,
+  "release_id": 415294757,
+  "release_target_and_bundle_snapshot": "da48e63b5a72ec49631aa98bb5d078eb5d6d9582",
+  "release_url": "https://github.com/matthewalexandern/Kernal/releases/tag/untagged-5cf042ef7cdf26cd7f7d",
+  "repository": "matthewalexandern/Kernal",
+  "result": "PASS",
+  "runtime_limits": {
+    "amd64": "Fresh native VM install acceptance passed7groups/61captures",
+    "arm64": "Boot/install/SecureBoot/Parallels/physical untested",
+    "formal_compliance": "FIPS certification and STIG compliance not established"
+  },
+  "schema": 1,
+  "source_parts": {
+    "amd64": {
+      "full_iso_sha256": "dbc1e92bcc8bda363c5198dc81968d4f2a898a2544c85f101cff0c70753982d4",
+      "original_bytes": 4343633920,
+      "part_bytes": [
+        1900000000,
+        1900000000,
+        543633920
+      ],
+      "write_and_reassembled_readback": "passed"
+    },
+    "arm64": {
+      "full_iso_sha256": "876d8c0008d37293bfa82c946de495cac5600e06eaa767f3bcd0fc88170c08e3",
+      "original_bytes": 4328081408,
+      "part_bytes": [
+        1900000000,
+        1900000000,
+        528081408
+      ],
+      "write_and_reassembled_readback": "passed"
+    }
+  },
+  "tag": "v0.1.0-preview-cc472f5",
+  "total_bytes": 12765274773,
+  "verification": {
+    "download_completed_utc": "2026-10-16T19:48:22Z",
+    "full_independent_asset_download": "All 14 assets downloaded in full and SHA256 matched after upload",
+    "remote_tag_target": "Independently read from git ls-remote; exact release target confirmed",
+    "separate_final_api_check": "All original asset IDs, uploaded states, byte sizes and GitHub SHA256 digests match the full download receipt"
+  },
+  "verified_utc": "2026-10-16T19:52:12Z"
+}
