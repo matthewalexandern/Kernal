@@ -1,0 +1,6 @@
+---
+type: job
+name: kythos-storage
+interface: python
+script: main.py
+noconfig: true

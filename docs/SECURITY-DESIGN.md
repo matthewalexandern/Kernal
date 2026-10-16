@@ -49,6 +49,14 @@ inbound service port; editions add explicit rules. The no-complexity/no-expiry
 password choice is a documented STIG deviation. NVIDIA drivers remain
 edition-selected and require DKMS/MOK enrollment under Secure Boot.
 
+Optional FIDO2 local-console login uses a root-owned credential mapping and a
+PAM include scoped to `login`. Enrollment requires physical presence plus a
+key PIN or built-in verification, and a real authentication using only the
+new credential before activation. Password authentication remains the fallback.
+The common PAM stack and SSH do not gain server-side security-key prompts.
+Authentication configuration changes are covered by the existing PAM and
+security-directory audit watches. Disk encryption is configured separately.
+
 The optional TPM2 unlock policy measures the UEFI boot path, GRUB commands,
 kernel command line, kernel, initramfs, and MOK state. A changed measurement
 blocks automatic key release. Enrollment requires the parsed event log to

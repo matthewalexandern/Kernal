@@ -1,0 +1,6 @@
+---
+type: job
+name: kythos-target
+interface: python
+script: main.py
+noconfig: true

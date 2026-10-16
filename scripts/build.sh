@@ -142,8 +142,11 @@ if [[ -n ${KYTHOS_CACHE_SEED:-} ]]; then
     ) > "$cache_seed_manifest"
 fi
 
-cp -a "$repo_root/auto" "$repo_root/config" "$repo_root/LICENSE" "$repo_root/NOTICE" \
+cp -a "$repo_root/auto" "$repo_root/LICENSE" "$repo_root/NOTICE" \
     "$repo_root/SNAPSHOT" "$repo_root/VERSION" "$build_root/"
+# Development imports must never add host Python bytecode to the image.
+rsync -a --exclude='__pycache__/' --exclude='*.py[cod]' \
+    "$repo_root/config/" "$build_root/config/"
 # A release build may start from a checkout owned by an unprivileged account.
 # Normalize the copied image recipe so no builder UID or private umask leaks
 # into the live filesystem or installer overlay.
@@ -154,6 +157,19 @@ chmod 0644 "$build_root/LICENSE" "$build_root/NOTICE" "$build_root/SNAPSHOT" "$b
 install -d -m 0755 "$build_root/config/includes.chroot/usr/share/kythos"
 install -m 0644 "$repo_root/VERSION" \
     "$build_root/config/includes.chroot/usr/share/kythos/version"
+# Record package roots before the chroot stage resolves the live-only
+# dependency closure. Priority-standard utilities are protected by that hook.
+for package_scope in live base; do
+    case "$package_scope" in
+        live) package_suffix=chroot_live ;;
+        base) package_suffix=chroot_install ;;
+    esac
+    awk '!/^[[:space:]]*(#|!|$)/ { print $1 }' \
+        "$repo_root"/config/package-lists/*.list."$package_suffix" \
+        | LC_ALL=C sort -u \
+        > "$build_root/config/includes.chroot/usr/share/kythos/installer-$package_scope-package-roots"
+    chmod 0644 "$build_root/config/includes.chroot/usr/share/kythos/installer-$package_scope-package-roots"
+done
 install -d -m 0755 \
     "$build_root/config/includes.chroot/usr/share/doc/kythos-kernal" \
     "$build_root/config/includes.binary"
@@ -181,6 +197,12 @@ required_source_recipe_files=(
     assets/branding/kythos-installer-banner-source.png
     assets/branding/kythos-mark-cyan-source.png
     scripts/render-branding.py
+    scripts/build.sh
+    scripts/build-calamares-partition.sh
+    scripts/validate-source.sh
+    patches/calamares/0001-validate-proposed-boot-and-swap-layout.patch
+    patches/calamares/README.md
+    patches/calamares/COPYING
     LICENSE
     NOTICE
     docs/BRANDING.md
@@ -191,6 +213,12 @@ required_source_recipe_files=(
     config/includes.chroot/etc/update-motd.d/10-uname
     tests/test-installer-branding.sh
     tests/test-login-branding.sh
+    tests/test-calamares-core.py
+    tests/test-setup-wizard.py
+    tests/test-installer-removal-plan.py
+    tests/test-fido2-login.py
+    tests/test-hardware-status.py
+    tests/calamares-storage-policy.cpp
 )
 for required_source_recipe_file in "${required_source_recipe_files[@]}"
 do
@@ -201,22 +229,23 @@ do
         exit 1
     }
 done
-for required_source_recipe_file in "${required_source_recipe_files[@]}"
-do
-    source_recipe_mode=0644
-    case "$required_source_recipe_file" in
-        scripts/render-branding.py|tests/*.sh|*/S19kythos-branding|*/debconf-loadtemplate|*/transform-installer-template|*/update-motd.d/10-uname)
-            source_recipe_mode=0755 ;;
-    esac
-    install -d -o root -g root -m 0755 \
-        "$source_recipe_root/$(dirname -- "$required_source_recipe_file")"
-    install -o root -g root -m "$source_recipe_mode" \
-        "$repo_root/$required_source_recipe_file" \
-        "$source_recipe_root/$required_source_recipe_file"
+# Preserve a complete editable recipe, including every script and test needed
+# to rebuild it. Only these reviewed source trees enter this payload; Git,
+# local builds, caches, credentials and VM state are never copied.
+install -d -m 0755 "$source_recipe_root"
+for source_directory in auto config scripts tests assets docs tools patches; do
+    rsync -a --exclude='__pycache__/' --exclude='*.py[cod]' \
+        "$repo_root/$source_directory/" "$source_recipe_root/$source_directory/"
 done
+for source_file in LICENSE NOTICE README.md SECURITY.md SNAPSHOT VERSION; do
+    install -m 0644 "$repo_root/$source_file" "$source_recipe_root/$source_file"
+done
+chown -R 0:0 "$source_recipe_root"
+chmod -R u=rwX,go=rX "$source_recipe_root"
 (
     cd "$source_recipe_root"
-    find LICENSE NOTICE assets scripts docs config tests -type f -print0 \
+    find LICENSE NOTICE README.md SECURITY.md SNAPSHOT VERSION \
+        auto assets scripts docs config tests tools patches -type f -print0 \
         | LC_ALL=C sort -z | xargs -0 sha256sum > SHA256SUMS
     sha256sum --check SHA256SUMS
 )
@@ -224,7 +253,8 @@ done
 (
     cd "$repo_root"
     {
-        find auto config scripts tests -type f -print0
+        find auto config scripts tests patches -type f \
+            ! -path '*/__pycache__/*' ! -name '*.pyc' ! -name '*.pyo' -print0
         printf '%s\0' \
             assets/branding/IMAGEGEN-PROMPT.md \
             assets/branding/kythos-boot-source.png \
@@ -271,6 +301,33 @@ if [[ ! $SOURCE_DATE_EPOCH =~ ^[0-9]+$ ]]; then
     exit 1
 fi
 export SOURCE_DATE_EPOCH
+
+# Use an authenticated, exact Debian source package for the small native
+# partition validation change. Build dependencies must already be installed
+# in this dedicated Debian guest; this does not install packages on a host.
+native_root="$build_root/native-calamares"
+install -d -m 0755 "$native_root/source" "$native_root/output"
+(
+    cd "$native_root/source"
+    apt-get -o Acquire::Retries=5 --only-source source calamares=3.3.14-1
+)
+"$repo_root/scripts/build-calamares-partition.sh" \
+    "$native_root/source/calamares-3.3.14" "$native_root/output" \
+    2>&1 | tee "$artifact_root/calamares-partition-build.log"
+native_image_root="$build_root/config/includes.chroot/usr/lib/kythos/calamares/modules"
+install -d -m 0755 "$native_image_root"
+cp -a "$native_root/output/partition" "$native_image_root/"
+install -m 0644 "$native_root/output/provenance.json" \
+    "$build_root/config/includes.chroot/usr/share/kythos/calamares-partition-provenance.json"
+install -m 0644 "$native_root/output/provenance.json" \
+    "$artifact_root/calamares-partition-provenance.json"
+# The source ISO's standard package closure contains the exact upstream source;
+# the editable patch, build script, policy test and GPL license are above.
+install -d -m 0755 "$build_root/config/includes.chroot/usr/share/doc/kythos-calamares-partition"
+install -m 0644 "$repo_root/patches/calamares/COPYING" \
+    "$build_root/config/includes.chroot/usr/share/doc/kythos-calamares-partition/COPYING"
+install -m 0644 "$repo_root/patches/calamares/README.md" \
+    "$build_root/config/includes.chroot/usr/share/doc/kythos-calamares-partition/README"
 
 {
     printf 'run_id=%s\n' "$run_id"

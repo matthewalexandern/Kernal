@@ -1,0 +1,216 @@
+#!/usr/bin/python3
+"""Read-only driver observations; Linux and udev remain the device loaders."""
+
+import json
+import os
+from pathlib import Path
+import re
+import signal
+import subprocess
+import sys
+import time
+
+
+PCI_CLASSES = {"01": "storage", "02": "network", "03": "graphics", "04": "multimedia",
+               "06": "bridge", "07": "communications", "08": "system", "09": "input", "0c": "bus"}
+USB_CLASSES = {"01": "audio", "02": "communications", "03": "input", "08": "storage",
+               "09": "hub", "0e": "video", "e0": "wireless", "ff": "vendor-specific"}
+VENDORS = {"0x10de": "NVIDIA", "0x1002": "AMD", "0x8086": "Intel", "0x1af4": "Virtio",
+           "0x1234": "Virtual display", "0x14e4": "Broadcom", "0x10ec": "Realtek", "0x168c": "Qualcomm Atheros"}
+RELEVANT = {"storage", "network", "graphics", "multimedia", "input", "audio", "video", "wireless", "vendor-specific"}
+MODULE_NAME = re.compile(r"[A-Za-z0-9_+-]{1,128}\Z")
+MODALIAS = re.compile(r"[A-Za-z0-9_:.*?+,-]{1,4096}\Z")
+
+
+def text(path, default=""):
+    try:
+        return path.read_text(encoding="utf-8", errors="replace").strip()[:4096]
+    except OSError:
+        return default
+
+
+def run_readonly(arguments, timeout):
+    """Only fixed tools/flags call this; never invoke a shell or load a module."""
+    try:
+        process = subprocess.Popen(arguments, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   stdin=subprocess.DEVNULL, text=True, start_new_session=True,
+                                   env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"})
+        try:
+            output, error = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            # A helper may have child queries; stop only this probe's group.
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            try:
+                process.communicate(timeout=1)
+            except subprocess.TimeoutExpired:
+                # A kernel-blocked query must not stall this diagnostic.
+                process.stdout.close()
+                process.stderr.close()
+            return None, "", "Read-only probe timed out"
+        return process.returncode, output[:131072], error[:2048]
+    except OSError:
+        return None, "", "Read-only probe unavailable or timed out"
+
+
+def binding(path, ancestors=False):
+    candidates = [path]
+    if ancestors:
+        try:
+            candidates = list(path.resolve().parents)[:6]
+            candidates.insert(0, path.resolve())
+        except OSError:
+            pass
+    for candidate in candidates:
+        driver = candidate / "driver"
+        try:
+            if driver.is_symlink():
+                name = driver.resolve().name
+                module = driver / "module"
+                return {"status": "bound", "driver": name,
+                        "module": module.resolve().name if module.is_symlink() else None}
+        except OSError:
+            continue
+    return {"status": "unbound", "driver": None, "module": None}
+
+
+def firmware_messages(output):
+    """Keep possible failures as observations, including failures later recovered."""
+    messages = []
+    for line in output.splitlines():
+        lowered = line.lower()
+        if "firmware" in lowered and re.search(r"\b(fail(?:ed|ure)?|missing|not found|error)\b", lowered):
+            value = line.strip()[:512]
+            if value and value not in messages:
+                messages.append(value)
+    return messages[-25:]
+
+
+def collect_hardware(root=Path("/"), runner=run_readonly):
+    kernel = text(root / "proc/sys/kernel/osrelease", "unknown")
+    report = {"schema": 1, "product": "KythOS Kernal", "kernel": kernel,
+              "mode": "read-only", "pci": [], "usb": [], "network": [], "storage": [], "graphics": [],
+              "firmware": {"status": "unavailable", "possible_failures": []}, "nvidia": None,
+              "note": "A bound driver is an observation, not proof of every device function. "
+                      "Unbound devices and module candidates need review; no drivers were loaded or installed."}
+    remaining_alias_probes = 16
+    alias_deadline = time.monotonic() + 3.0
+
+    def enrich(device, item):
+        nonlocal remaining_alias_probes
+        item.update(binding(device))
+        item["candidate_modules"] = []
+        item["alias_probe"] = "not-needed" if item["status"] == "bound" else "not-checked"
+        alias = text(device / "modalias")
+        remaining = alias_deadline - time.monotonic()
+        if (item["status"] == "unbound" and item["kind"] in RELEVANT and alias and
+                MODALIAS.fullmatch(alias) and remaining_alias_probes > 0 and remaining > 0):
+            remaining_alias_probes -= 1
+            code, output, _ = runner(["/usr/sbin/modprobe", "--resolve-alias", alias], min(remaining, 0.6))
+            item["alias_probe"] = "checked" if code == 0 else "unavailable"
+            if code == 0:
+                item["candidate_modules"] = sorted({line for line in output.splitlines()
+                                                     if MODULE_NAME.fullmatch(line)})[:20]
+        return item
+
+    for device in sorted((root / "sys/bus/pci/devices").glob("*")):
+        vendor, product = text(device / "vendor"), text(device / "device")
+        klass = text(device / "class").removeprefix("0x")
+        item = {"address": device.name, "kind": PCI_CLASSES.get(klass[:2], "other"),
+                "id": f"{vendor.removeprefix('0x')}:{product.removeprefix('0x')}",
+                "vendor": VENDORS.get(vendor.lower(), vendor or "unknown")}
+        report["pci"].append(enrich(device, item))
+    for device in sorted((root / "sys/bus/usb/devices").glob("*:*")):
+        parent = device.parent / device.name.split(":", 1)[0]
+        vendor, product = text(parent / "idVendor"), text(parent / "idProduct")
+        kind = USB_CLASSES.get(text(device / "bInterfaceClass").lower(), "other")
+        report["usb"].append(enrich(device, {"address": device.name, "kind": kind,
+                                            "id": f"{vendor}:{product}", "vendor": vendor or "unknown"}))
+    for interface in sorted((root / "sys/class/net").glob("*")):
+        if interface.name == "lo":
+            continue
+        item = {"name": interface.name, "state": text(interface / "operstate", "unknown")}
+        if (interface / "device").exists():
+            item.update(binding(interface / "device"))
+        else:
+            item.update(status="virtual-or-unknown", driver=None, module=None)
+        report["network"].append(item)
+    for card in sorted((root / "sys/class/drm").glob("card*")):
+        if re.fullmatch(r"card\d+", card.name) and (card / "device").exists():
+            item = {"name": card.name}
+            item.update(binding(card / "device"))
+            report["graphics"].append(item)
+    for disk in sorted((root / "sys/block").glob("*")):
+        if not re.fullmatch(r"(?:sd[a-z]+|vd[a-z]+|xvd[a-z]+|nvme\d+n\d+|mmcblk\d+)", disk.name):
+            continue
+        item = {"name": disk.name, "model": text(disk / "device/model")[:100]}
+        item.update(binding(disk / "device", ancestors=True))
+        report["storage"].append(item)
+    code, output, _ = runner(["/usr/bin/journalctl", "--boot", "--dmesg", "--no-pager", "--quiet",
+                              "--output=cat", "--lines=1500"], 1.5)
+    if code == 0 and output.strip():
+        messages = firmware_messages(output)
+        report["firmware"] = {"status": "possible-issues" if messages else "no-missing-firmware-messages-observed",
+                              "possible_failures": messages,
+                              "scope": "Last 1500 kernel journal lines of this boot; recovered errors may also appear."}
+    else:
+        report["firmware"]["scope"] = "Kernel journal was unavailable or empty. Run with sudo for journal access if needed."
+    nvidia = [item for item in report["pci"] if item["vendor"] == "NVIDIA" and item["kind"] == "graphics"]
+    if nvidia:
+        readiness = {"detected": True, "drivers": sorted({p["driver"] for p in nvidia if p["driver"]}),
+                     "matching_headers": (root / "lib/modules" / kernel / "build").exists(),
+                     "detail_command": "kythos-nvidia-readiness", "detail_status": "unavailable"}
+        # This existing helper only inspects local package/module/GPU state.
+        code, output, _ = runner(["/usr/local/sbin/kythos-nvidia-readiness"], 6)
+        if code is not None and output.strip():
+            readiness.update(detail_status="observed", details=output[:24576])
+        report["nvidia"] = readiness
+    relevant = [p for p in report["pci"] + report["usb"] if p["kind"] in RELEVANT]
+    report["summary"] = {"devices_observed": len(report["pci"]) + len(report["usb"]),
+                         "relevant_bound": sum(p["status"] == "bound" for p in relevant),
+                         "relevant_unbound": sum(p["status"] == "unbound" for p in relevant),
+                         "firmware_messages": len(report["firmware"]["possible_failures"])}
+    return report
+
+
+def format_report(report):
+    lines = ["KythOS Kernal hardware observations", f"Kernel: {report['kernel']}", ""]
+    for group, label in (("pci", "PCI devices"), ("usb", "USB interfaces")):
+        lines.append(label + ":")
+        for item in report[group]:
+            driver = item["driver"] or "no driver binding observed"
+            module = f"; module={item['module']}" if item["module"] else ""
+            candidates = "; candidates=" + ",".join(item["candidate_modules"]) if item["candidate_modules"] else ""
+            lines.append(f"  {item['address']} {item['kind']} [{item['id']}] {driver}{module}{candidates}")
+        if not report[group]:
+            lines.append("  None observed")
+    for group, label in (("network", "Network interfaces"), ("graphics", "Graphics devices"), ("storage", "Storage devices")):
+        lines.append(label + ":")
+        for item in report[group]:
+            lines.append(f"  {item['name']}: {item['driver'] or item['status']}" +
+                         (f"; link={item['state']}" if "state" in item else ""))
+        if not report[group]:
+            lines.append("  None observed")
+    lines += ["Firmware journal: " + report["firmware"]["status"], "  " + report["firmware"]["scope"]]
+    lines += ["  " + line for line in report["firmware"]["possible_failures"]]
+    if report["nvidia"]:
+        lines += ["NVIDIA: detected; detailed local readiness: kythos-nvidia-readiness"]
+    return "\n".join(lines + ["", report["note"]])
+
+
+def main():
+    if sys.argv[1:] not in ([], ["--json"], ["--help"]):
+        print("Usage: kythos-hardware-status [--json]", file=sys.stderr)
+        return 2
+    if sys.argv[1:] == ["--help"]:
+        print("Usage: kythos-hardware-status [--json]\nRead driver bindings, local module candidates, and firmware messages. No changes are made.")
+        return 0
+    report = collect_hardware()
+    print(json.dumps(report, indent=2) if sys.argv[1:] == ["--json"] else format_report(report))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

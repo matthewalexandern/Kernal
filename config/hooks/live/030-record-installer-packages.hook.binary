@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+umask 022
+
+# The advanced Debian Installer uses the same exact live-only dependency
+# removal list as Calamares. It must not leave the GUI in the common base.
+test -s ../chroot/usr/share/kythos/installer-live-packages
+test -d live
+cp ../chroot/usr/share/kythos/installer-live-packages \
+    live/filesystem.packages-remove
+chmod 0644 live/filesystem.packages-remove

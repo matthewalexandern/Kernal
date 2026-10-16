@@ -21,3 +21,5 @@
 /*.files
 /source/
 /source.*
+__pycache__/
+*.py[cod]

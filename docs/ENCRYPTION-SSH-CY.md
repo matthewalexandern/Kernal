@@ -2,11 +2,18 @@
 
 ## Full-disk encryption choices
 
-The graphical and text installers offer guided encrypted LVM. This is the
-software-only option: select encrypted LVM, choose a nonempty passphrase, and
-do not run the TPM enrollment command after installation. The encrypted LVM
-volume contains the root filesystem and swap; `/boot` and the EFI System
-Partition remain outside that volume as required for boot.
+Calamares offers native guided and manual partitioning, optional LUKS2 root
+encryption, and swap choices. Manual partitioning lets you edit sizes and
+mount points. With encrypted root, use a separate unencrypted `/boot` and
+encrypted swap, a swap file inside encrypted root, or no swap. The EFI System
+Partition also remains unencrypted. The guided `/boot` size is a suggestion;
+it does not fix the sizes in the manual editor. The native partition module
+validates boot and swap constraints before executing disk jobs.
+
+The advanced graphical and text installers also offer guided encrypted LVM.
+For software-only encryption, choose a nonempty passphrase and do not run
+TPM enrollment after installation. An encrypted LVM volume can contain root
+and swap while `/boot` and the EFI System Partition remain outside it.
 
 Software-only mode protects data at rest after a powered-off device is lost or
 stolen, but it does not authenticate the unencrypted boot files or the
@@ -144,6 +151,39 @@ Debian's installer documents guided encrypted LVM in its
 [installation guide](https://www.debian.org/releases/trixie/amd64/ch06s03.en.html),
 and Debian describes `clevis-initramfs` as its early-boot LUKS integration in
 the [package record](https://packages.debian.org/trixie/clevis-initramfs).
+
+## FIDO2 local login
+
+The installed common base includes an optional FIDO2 authentication path for
+local console login. A password remains available for recovery, sudo, and
+password SSH. Enrollment is performed on the installed system with a physical
+authenticator; it is not available in the live installer:
+
+```sh
+sudo kythos-fido-login enroll USER
+# For an authenticator with built-in verification, such as a biometric sensor:
+sudo kythos-fido-login enroll USER --verification uv
+sudo kythos-fido-login status USER
+```
+
+The default requires the key's PIN and physical presence. Enrollment registers
+a credential, proves that newly registered credential through a temporary PAM
+service, and only then activates the root-owned mapping and local-login PAM
+include. Failed enrollment leaves password login in place. Register a spare
+key by repeating enrollment. Keep the recovery password available.
+
+To remove a user's mappings or restore the pre-enrollment login configuration:
+
+```sh
+sudo kythos-fido-login disable USER
+sudo kythos-fido-login recover
+```
+
+This console login setting does not unlock an encrypted disk. TPM2 disk
+unlock is configured separately as described above. Local-device PAM prompts
+are not added to SSH; use OpenSSH's `ed25519-sk` or `ecdsa-sk` public keys for
+security-key SSH authentication. `kythos-fido-login ssh-guide` prints the
+client-side commands.
 
 ## SSH password behavior
 

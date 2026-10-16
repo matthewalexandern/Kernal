@@ -1,0 +1,4 @@
+# KythOS local-console FIDO2 path.  kythos-fido-login adds this service to
+# /etc/pam.d/login only after a newly registered credential passes a real PAM
+# authentication.  Failure falls through to login's normal password stack.
+auth sufficient pam_u2f.so authfile=/etc/security/kythos-u2f-mappings origin=pam://kythos-local appid=pam://kythos-local cue userpresence=1

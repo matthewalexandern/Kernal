@@ -1,0 +1,16 @@
+#!/bin/sh
+# Direct shortcut to the same fixed, live-only privileged launcher.
+set -eu
+if test "$#" -ne 0; then
+    printf '%s\n' 'Usage: kythos-install' >&2
+    exit 2
+fi
+if ! /usr/local/libexec/kythos-live-guard; then
+    printf '%s\n' 'The installer is available only in a KythOS Kernal live session.' >&2
+    exit 1
+fi
+if test "${DISPLAY:-}" != :0 && test "${DISPLAY:-}" != :0.0; then
+    printf '%s\n' 'Run kythos-installer to open the local installation session first.' >&2
+    exit 1
+fi
+exec /usr/bin/sudo -n -- /usr/local/sbin/kythos-installer-root

@@ -17,7 +17,9 @@ package so installed systems receive KythOS policy updates.
   acceptance path.
 - BIOS and UEFI boot, with signed shim/GRUB/kernel support for Secure Boot.
 - Text-free KythOS boot artwork, including an animated cyan mark during the
-  installed-system Plymouth stage, plus graphical and text installer paths.
+  installed-system Plymouth stage. Calamares and a separate native setup
+  guide run in a temporary live graphical session; advanced graphical and
+  text installer paths remain available.
 - Software-passphrase encrypted installation and an optional, recovery-safe
   TPM2 enrollment command for an installed LUKS2 system.
 - AppArmor on installed systems, audit logging, authenticated package sources,
@@ -27,14 +29,18 @@ package so installed systems receive KythOS policy updates.
   NVMe tooling, Bluetooth, and signed `fwupd` support.
 - Password-capable SSH with root and empty-password login prohibited. The
   common firewall keeps port 22 closed until an edition explicitly opens it.
+- Optional FIDO2 key login at the local console, with verified enrollment and
+  the account password retained for recovery. SSH supports native security-key
+  public keys independently.
 - Opt-in OpenSSL FIPS-provider tooling and initial STIG-derived hardening with
   a partial mapping to selected Ubuntu 24.04 controls. The baseline has not
   been assessed or approved as a STIG baseline, and the provider is not
   represented as formally validated.
 - NVIDIA headers, DKMS, MOK, firmware, and detection tooling without forcing a
   single driver family onto incompatible GPUs.
-- No desktop, hypervisor, AI runtime, proprietary NVIDIA driver, or custom
-  kernel in the common base.
+- No installed desktop, hypervisor, AI runtime, proprietary NVIDIA driver, or
+  custom kernel in the common base. The installation interface is removed
+  from installed targets.
 
 The baseline leaves kernel modules, user namespaces, virtualization, network
 forwarding capability, outbound traffic, and bridge support available. Each
@@ -47,7 +53,8 @@ Build in Debian 13 amd64 with root privileges, `live-build`, `debootstrap`,
 
 ```sh
 sudo apt update
-sudo apt install live-build debootstrap squashfs-tools xorriso rsync python3-pil
+sudo apt install live-build debootstrap squashfs-tools xorriso rsync python3-pil python3-yaml python3-jsonschema build-essential patch
+sudo apt build-dep calamares
 sudo ./scripts/build.sh
 ```
 
@@ -55,6 +62,34 @@ The build produces a hybrid binary ISO, a corresponding source ISO, exact
 binary-to-source coverage evidence, package manifests, a configuration dump,
 logs, licenses, and SHA-256 checksums. See
 [BUILDING.md](docs/BUILDING.md) for the isolated builder and test workflow.
+
+## Installation
+
+Choose **Install KythOS Kernal (Calamares)** in the boot menu. A separate
+KythOS setup guide shows detected hardware and explains the installation
+choices, then starts Calamares. The guide does not collect or save passwords,
+accounts, partition selections, or a simulated installation plan. Enter those
+choices in Calamares and review its summary before installation.
+
+Calamares exposes its native erase, alongside, replacement, and manual
+partitioning choices when applicable to the detected disk. Manual partitioning
+lets you create and edit filesystem sizes and mount points. The guided layout
+suggests a 2 GiB `/boot`; this is not the root filesystem size or a manual size
+limit. Optional LUKS2 root encryption requires a separate unencrypted `/boot`
+and encrypted swap, a swap file inside encrypted root, or no swap. A native
+validation step checks the proposed layout before partition jobs begin.
+The advanced graphical and text installers remain available for their
+additional storage and accessibility workflows. TPM2 enrollment is optional
+after installation.
+
+The console-only common base requires login by default. Checking Calamares'
+automatic-login option explicitly enables local tty1 login for the chosen
+ordinary user; it does not open SSH or enable root login. All accounts still
+receive a nonempty password for authentication and sudo.
+
+**Start KythOS Kernal** opens the live console. Run `kythos-installer` there
+to open the setup guide, or use `kythos-install` from the graphical session
+to open Calamares directly. The four edition package sets are future work.
 
 ## Validate the recipe
 
@@ -66,7 +101,12 @@ After installation, inspect the common security controls with:
 
 ```sh
 sudo kythos-security-status
+kythos-hardware-status
 ```
+
+After installation, enroll and verify a physical FIDO2 key with
+`sudo kythos-fido-login enroll USER`. Enrollment requests the key's PIN and
+touch by default, then requires a real authentication before enabling it.
 
 ## Scope and hardware support
 
@@ -95,7 +135,8 @@ packages require the recipient to accept separate license terms.
 - [Security reporting](SECURITY.md)
 
 KythOS-owned build scripts and documentation are released under the MIT
-license. Debian packages and firmware retain their upstream licenses.
+license. The modified Calamares partition plugin and its patch retain
+Calamares' GPL license. Packages and firmware retain their upstream licenses.
 
 KythOS Kernal is not affiliated with or endorsed by **Debian**. **Debian** is a
 registered trademark owned by Software in the Public Interest, Inc.

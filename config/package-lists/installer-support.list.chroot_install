@@ -1,0 +1,19 @@
+# Both boot platforms remain maintainable after the live GUI is removed.
+grub2-common
+grub-pc-bin
+grub-efi-amd64-bin
+grub-efi-amd64-signed
+shim-signed
+efibootmgr
+os-prober
+keyutils
+python3
+
+# Keep selected console keymaps usable after the live X/Qt stack is removed.
+console-setup
+
+# Optional physical-security-key login and read-only hardware diagnostics.
+libpam-u2f
+pamu2fcfg
+pamtester
+kmod

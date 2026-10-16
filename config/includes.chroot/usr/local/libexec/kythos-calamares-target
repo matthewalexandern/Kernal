@@ -1,0 +1,385 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: MIT
+"""Finalize only the native Calamares target, never the running live host.
+
+Commands are fixed; no user supplied shell commands, disk paths, package names,
+passwords, or recovery keys are accepted by this entrypoint.
+"""
+import grp
+import json
+import os
+from pathlib import Path
+import pwd
+import re
+import shutil
+import stat
+import subprocess
+import sys
+
+STATE_DIR = Path("/var/lib/kythos")
+MARKER_TEXT = "KythOS Calamares target v1\n"
+MANIFEST = Path("/usr/share/kythos/installer-live-packages")
+BASE_ROOTS = Path("/usr/share/kythos/installer-base-package-roots")
+MANIFEST_FILES = (MANIFEST, BASE_ROOTS, Path("/usr/share/kythos/installer-live-package-roots"))
+AUTOLOGIN_FILE = Path("/etc/systemd/system/getty@tty1.service.d/60-kythos-autologin.conf")
+LIVE_FILES = (
+    "/etc/sudoers.d/kythos-live-installer",
+    "/usr/share/kythos/calamares-partition-provenance.json",
+    "/etc/sudoers.d/live",
+    "/etc/profile.d/zz-kythos-installer.sh",
+    "/etc/profile.d/zz-live-config_xinit.sh",
+    "/usr/local/bin/kythos-setup",
+    "/usr/local/bin/kythos-installer",
+    "/usr/local/bin/kythos-install",
+    "/usr/local/sbin/kythos-installer-root",
+    "/usr/local/libexec/kythos-live-guard",
+    "/usr/local/libexec/kythos-live-session",
+    "/usr/local/libexec/kythos-calamares-clean-live-files",
+    "/usr/share/applications/kythos-setup.desktop",
+    "/usr/share/applications/kythos-install.desktop",
+    "/usr/lib/live/config/1200-kythos-installer",
+)
+LIVE_DIRS = ("/usr/share/kythos/live", "/etc/calamares", "/usr/lib/kythos/calamares", "/usr/share/doc/kythos-calamares-partition")
+REQUIRED_PACKAGES = frozenset((
+    "apt", "auditd", "apparmor", "apparmor-utils", "aide-common", "nftables",
+    "systemd", "systemd-sysv", "sudo", "openssh-server", "network-manager",
+    "cryptsetup", "cryptsetup-initramfs", "initramfs-tools", "linux-image-amd64",
+    "linux-headers-amd64", "dkms", "mokutil", "keyutils", "clevis-initramfs",
+    "clevis-tpm2", "python3", "grub2-common", "grub-pc-bin",
+    "grub-efi-amd64-bin", "grub-efi-amd64-signed", "shim-signed", "efibootmgr",
+    "unattended-upgrades", "openssl-provider-fips", "debian-security-support",
+    "needrestart", "debsums", "cron", "s-nail",
+))
+PACKAGE_RE = re.compile(r"[a-z0-9][a-z0-9+.-]*(?::[a-z0-9][a-z0-9-]*)?\Z")
+
+
+def command(arguments, capture=False):
+    environment = dict(os.environ, DEBIAN_FRONTEND="noninteractive", LC_ALL="C")
+    return subprocess.run(arguments, check=True, text=True, env=environment,
+                          stdout=subprocess.PIPE if capture else None).stdout
+
+
+def read_os_release(path=Path("/etc/os-release")):
+    return dict(line.split("=", 1) for line in path.read_text().splitlines()
+                if "=" in line and not line.startswith("#"))
+
+
+def verify_chroot_context():
+    if os.geteuid() != 0:
+        raise ValueError("The Calamares target finalizer requires root.")
+    # /proc is the live host's bound procfs. PID 1 is outside this chroot.
+    root, init_root = os.stat("/"), os.stat("/proc/1/root")
+    if (root.st_dev, root.st_ino) == (init_root.st_dev, init_root.st_ino):
+        raise ValueError("Refusing to run outside the mounted installer target.")
+    if read_os_release().get("ID", "").strip('"') != "kythos":
+        raise ValueError("The mounted target is not KythOS Kernal.")
+
+
+def verify_target_context():
+    verify_chroot_context()
+    marker = STATE_DIR / "calamares-target"
+    metadata = marker.lstat()
+    if (not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != 0 or
+            stat.S_IMODE(metadata.st_mode) != 0o600 or marker.read_text() != MARKER_TEXT):
+        raise ValueError("The mounted target marker is invalid.")
+
+
+def read_topology():
+    path = STATE_DIR / "calamares-storage.json"
+    metadata = path.lstat()
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != 0 or stat.S_IMODE(metadata.st_mode) != 0o600:
+        raise ValueError("Invalid storage receipt permissions.")
+    data = json.loads(path.read_text())
+    expected = {"encrypted", "root_requires_crypto", "root_filesystem", "crypt_mappings", "swap_devices",
+                "firmware", "username", "swap", "autologin", "install_bootloader"}
+    if (set(data) != expected or type(data["encrypted"]) is not bool or
+            type(data["root_requires_crypto"]) is not bool or type(data["autologin"]) is not bool or
+            type(data["install_bootloader"]) is not bool or
+            data["firmware"] not in ("bios", "efi") or data["swap"] not in ("none", "file", "small", "suspend") or
+            not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", data["username"]) or
+            not re.fullmatch(r"[a-zA-Z0-9_+-]+", data["root_filesystem"]) or
+            not isinstance(data["crypt_mappings"], list) or not isinstance(data["swap_devices"], list)):
+        raise ValueError("Invalid installer storage receipt.")
+    names = set()
+    for mapping in data["crypt_mappings"]:
+        if (set(mapping) != {"name", "uuid", "early"} or type(mapping["early"]) is not bool or
+                not re.fullmatch(r"[A-Za-z0-9_.+-]+", mapping["name"]) or
+                not re.fullmatch(r"[0-9a-fA-F-]{36}", mapping["uuid"]) or mapping["name"] in names):
+            raise ValueError("Invalid encrypted storage identity.")
+        names.add(mapping["name"])
+    if any(not re.fullmatch(r"(?:UUID=[a-fA-F0-9-]+|/dev/[A-Za-z0-9_./+-]+)", name)
+           or "/../" in name for name in data["swap_devices"]):
+        raise ValueError("Invalid selected swap identity.")
+    return data
+
+
+def protected_package(name):
+    name = name.split(":", 1)[0]
+    return (name in REQUIRED_PACKAGES or
+            name.startswith(("linux-image-", "linux-headers-", "firmware-", "grub-", "shim-", "libpython3")) or
+            re.fullmatch(r"python3(?:\.\d+)?(?:-minimal|-apt|-lib2to3)?", name) is not None)
+
+
+def manifest_packages(path=MANIFEST):
+    metadata = path.lstat()
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != 0 or metadata.st_mode & 0o022:
+        raise ValueError("The live package manifest is not owned safely.")
+    names = [line.strip() for line in path.read_text().splitlines()
+             if line.strip() and not line.lstrip().startswith("#")]
+    if not names or len(names) != len(set(names)):
+        raise ValueError("The live package manifest is empty or contains duplicates.")
+    if any(not PACKAGE_RE.fullmatch(name) or protected_package(name) for name in names):
+        raise ValueError("The live package manifest contains an unsafe removal.")
+    base_metadata = BASE_ROOTS.lstat()
+    if (not stat.S_ISREG(base_metadata.st_mode) or base_metadata.st_uid != 0 or
+            base_metadata.st_mode & 0o022):
+        raise ValueError("The base package roots are not owned safely.")
+    base_names = {line.strip() for line in BASE_ROOTS.read_text().splitlines()
+                  if line.strip() and not line.lstrip().startswith("#")}
+    if not base_names or any(not PACKAGE_RE.fullmatch(name) for name in base_names):
+        raise ValueError("The base package roots are invalid.")
+    if {name.split(":", 1)[0] for name in names} & {name.split(":", 1)[0] for name in base_names}:
+        raise ValueError("The live package manifest overlaps the installed base.")
+    return names
+
+
+def removal_plan_packages(output):
+    result = []
+    for line in output.splitlines():
+        if line.startswith(("Remv ", "Purg ")):
+            name = line.split()[1]
+            if not PACKAGE_RE.fullmatch(name) or protected_package(name):
+                raise ValueError("Removing the live environment would remove a required base package.")
+            result.append(name)
+    return result
+
+
+def purge_live_packages():
+    names = manifest_packages()
+    status = command(["/usr/bin/dpkg-query", "-W", "-f=${binary:Package}\t${db:Status-Status}\n"], capture=True)
+    installed = {line.split("\t")[0]: line.split("\t")[1] for line in status.splitlines() if "\t" in line}
+    present = [name for name in names if installed.get(name) in ("installed", "config-files") or
+               installed.get(name + ":amd64") in ("installed", "config-files")]
+    if present:
+        arguments = ["/usr/bin/apt-get", "-y", "--no-install-recommends", "purge", "--", *present]
+        simulation = command([arguments[0], "-s", *arguments[1:]], capture=True)
+        planned = removal_plan_packages(simulation)
+        allowed = {name.split(":", 1)[0] for name in names}
+        if any(name.split(":", 1)[0] not in allowed for name in planned):
+            raise ValueError("The package removal plan exceeds the explicit live package manifest.")
+        command(arguments)
+
+
+def crypttab_entries(data):
+    return {mapping["name"]: [mapping["name"], "UUID=" + mapping["uuid"], "none",
+                              "luks,initramfs" if mapping["early"] else "luks"]
+            for mapping in data["crypt_mappings"]}
+
+
+def configure_crypttab(data, path=Path("/etc/crypttab")):
+    expected = crypttab_entries(data)
+    result, matched = [], set()
+    for line in path.read_text().splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            result.append(line)
+            continue
+        fields = line.split()
+        if len(fields) not in (3, 4):
+            raise ValueError("The generated crypttab contains an invalid line.")
+        if fields[0] not in expected:
+            # Native GS includes unlocked foreign devices. Do not add devices
+            # which the user did not assign to this installed system.
+            continue
+        wanted = expected[fields[0]]
+        if fields[:3] != wanted[:3] or fields[0] in matched:
+            raise ValueError("The generated encryption entry is inconsistent.")
+        result.append("\t".join(wanted))
+        matched.add(fields[0])
+    if matched != set(expected):
+        raise ValueError("An assigned encrypted volume is missing from crypttab.")
+    path.write_text("\n".join(result) + "\n")
+    path.chmod(0o600)
+
+
+def remove_live_files():
+    for name in LIVE_FILES:
+        path = Path(name)
+        if path.is_symlink() or path.is_file():
+            path.unlink()
+        elif path.exists():
+            raise ValueError("A live-only file path has an unexpected type.")
+    for name in LIVE_DIRS:
+        path = Path(name)
+        if path.is_symlink():
+            path.unlink()
+        elif path.exists():
+            shutil.rmtree(path)
+    for path in MANIFEST_FILES:
+        path.unlink(missing_ok=True)
+
+
+def autologin_contents(username):
+    if (not isinstance(username, str) or not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", username)
+            or username in ("root", "nobody", "kythos-live")):
+        raise ValueError("Invalid local automatic-login account.")
+    return ("# Optional local tty1 login explicitly selected during installation.\n"
+            "[Service]\nExecStart=\nExecStart=-/sbin/agetty --autologin " + username + " --noclear %I $TERM\n")
+
+
+def configure_autologin(data, path=AUTOLOGIN_FILE):
+    if data["autologin"]:
+        content = autologin_contents(data["username"])
+        path.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+        path.write_text(content)
+        path.chmod(0o644)
+    else:
+        path.unlink(missing_ok=True)
+
+
+def verify_autologin(data, path=AUTOLOGIN_FILE):
+    if data["autologin"]:
+        metadata = path.lstat()
+        if (not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != 0 or metadata.st_mode & 0o022 or
+                path.read_text() != autologin_contents(data["username"])):
+            raise ValueError("The selected local automatic-login configuration is inconsistent.")
+    elif path.exists() or path.is_symlink():
+        raise ValueError("Local automatic login was not selected but its configuration is present.")
+
+
+def prepare(data):
+    if Path("/crypto_keyfile.bin").exists():
+        raise ValueError("A plaintext encryption key must not be installed in the public boot layout.")
+    configure_crypttab(data)
+    Path("/etc/initramfs-tools/conf.d/60-kythos-permissions").write_text("UMASK=0077\n")
+    # Suppress service startup while packages are removed in the target.
+    policy = Path("/usr/sbin/policy-rc.d")
+    if policy.exists():
+        raise ValueError("An unexpected service policy is present in the target.")
+    policy.write_text("#!/bin/sh\nexit 101\n")
+    policy.chmod(0o755)
+    try:
+        purge_live_packages()
+    finally:
+        policy.unlink(missing_ok=True)
+    remove_live_files()
+    configure_autologin(data)
+    if data["autologin"]:
+        command(["/usr/bin/systemctl", "enable", "getty@tty1.service"])
+    command(["/usr/bin/systemctl", "set-default", "multi-user.target"])
+    for unit in ("NetworkManager.service", "apparmor.service", "auditd.service", "nftables.service",
+                 "ssh.service", "systemd-timesyncd.service", "apt-daily.timer", "apt-daily-upgrade.timer",
+                 "fstrim.timer", "kythos-aide-initialize.timer", "dailyaidecheck.timer"):
+        command(["/usr/bin/systemctl", "enable", unit])
+    # A loopback DHCP lease is not a durable installed-system resolver.
+    resolv = Path("/etc/resolv.conf")
+    resolv.unlink(missing_ok=True)
+    resolv.symlink_to("/run/NetworkManager/resolv.conf")
+
+
+def verify(data):
+    for path in (Path("/etc/os-release"), Path("/usr/lib/os-release")):
+        identity = read_os_release(path)
+        if identity.get("NAME", "").strip('"') != "KythOS Kernal" or identity.get("ID") != "kythos":
+            raise ValueError("Installed OS identity is incorrect.")
+    hashes = {line.split(":", 2)[0]: line.split(":", 2)[1] for line in Path("/etc/shadow").read_text().splitlines()}
+    if not hashes.get("root", "").startswith(("!", "*")):
+        raise ValueError("The installed root account must remain locked.")
+    user = pwd.getpwnam(data["username"])
+    if user.pw_uid < 1000 or not hashes.get(user.pw_name) or hashes[user.pw_name].startswith(("!", "*")):
+        raise ValueError("The installed administrator needs a nonempty usable password.")
+    if user.pw_name not in grp.getgrnam("sudo").gr_mem:
+        raise ValueError("The installed administrator is not a sudo group member.")
+    verify_autologin(data)
+    if data["autologin"] and command(["/usr/bin/systemctl", "is-enabled", "getty@tty1.service"], capture=True).strip() != "enabled":
+        raise ValueError("The selected local automatic-login terminal is not enabled.")
+    for path in LIVE_FILES:
+        if Path(path).exists() or Path(path).is_symlink():
+            raise ValueError("A live-only launcher or privilege rule remains in the target.")
+    if command(["/usr/bin/systemctl", "get-default"], capture=True).strip() != "multi-user.target":
+        raise ValueError("The common base must boot to the terminal.")
+    required_boot_files = ["/etc/fstab", "/etc/default/keyboard"]
+    if data["install_bootloader"]:
+        required_boot_files.append("/boot/grub/grub.cfg")
+    for path in required_boot_files:
+        if not Path(path).is_file() or not Path(path).stat().st_size:
+            raise ValueError("A required installed boot configuration is missing.")
+    kernels = list(Path("/boot").glob("vmlinuz-*-amd64"))
+    if not kernels or any(not Path(str(kernel).replace("vmlinuz-", "initrd.img-")).is_file() for kernel in kernels):
+        raise ValueError("A packaged kernel and matching initramfs are required.")
+    entries = [line.split() for line in Path("/etc/crypttab").read_text().splitlines()
+               if line.strip() and not line.lstrip().startswith("#")]
+    if sorted(entries) != sorted(crypttab_entries(data).values()):
+        raise ValueError("The assigned encrypted volumes must use the packaged cryptsetup integration.")
+    if Path("/crypto_keyfile.bin").exists():
+        raise ValueError("An unexpected plaintext encryption key remains.")
+    swap_entries = [line.split() for line in Path("/etc/fstab").read_text().splitlines()
+                    if line.strip() and not line.lstrip().startswith("#")]
+    swap_devices = {fields[0] for fields in swap_entries if len(fields) >= 3 and fields[2] == "swap"}
+    expected_swap = set(data["swap_devices"])
+    if data["swap"] == "file":
+        filename = "/swap/swapfile" if data["root_filesystem"] == "btrfs" else "/swapfile"
+        expected_swap.add(filename)
+        swap = Path(filename)
+        if (not swap.is_file() or swap.is_symlink() or swap.stat().st_size == 0 or
+                stat.S_IMODE(swap.stat().st_mode) != 0o600):
+            raise ValueError("The selected swap file must be a private, nonempty regular file.")
+        if data["root_filesystem"] == "btrfs":
+            # Btrfs assigns different st_dev values to subvolumes. Compare the
+            # backing block source rather than rejecting a legitimate subvolume.
+            source = command(["/usr/bin/findmnt", "-n", "-o", "SOURCE", "--target", filename], capture=True).strip().split("[", 1)[0]
+            root_source = command(["/usr/bin/findmnt", "-n", "-o", "SOURCE", "--target", "/"], capture=True).strip().split("[", 1)[0]
+            if not source or source != root_source:
+                raise ValueError("The swap file must reside inside the selected root storage.")
+        elif swap.stat().st_dev != os.stat("/").st_dev:
+            raise ValueError("The swap file must reside inside the selected root storage.")
+    if swap_devices != expected_swap:
+        raise ValueError("The installed swap entries differ from the native partition selections.")
+    if data["firmware"] == "efi":
+        shim = Path("/usr/lib/shim/shimx64.efi.signed").read_bytes()
+        grub = Path("/usr/lib/grub/x86_64-efi-signed/grubx64.efi.signed").read_bytes()
+        for relative, expected in (("kythos/shimx64.efi", shim), ("kythos/grubx64.efi", grub),
+                                   ("BOOT/BOOTX64.EFI", shim), ("BOOT/grubx64.efi", grub)):
+            if Path("/boot/efi/EFI", relative).read_bytes() != expected:
+                raise ValueError("The installed EFI chain differs from the packaged signed files.")
+    Path("/run/sshd").mkdir(mode=0o755, exist_ok=True)
+    command(["/usr/bin/ssh-keygen", "-A"])
+    ssh = dict(line.split(" ", 1) for line in command(["/usr/sbin/sshd", "-T"], capture=True).splitlines() if " " in line)
+    for name, value in (("passwordauthentication", "yes"), ("pubkeyauthentication", "yes"),
+                        ("permitrootlogin", "no"), ("permitemptypasswords", "no")):
+        if ssh.get(name) != value:
+            raise ValueError("The installed SSH policy is inconsistent.")
+    if command(["/usr/bin/dpkg", "--audit"], capture=True).strip():
+        raise ValueError("The target package database is not fully configured.")
+    result = {"schema": 1, "installer": "Calamares", "product": "KythOS Kernal",
+              "version": "0.1.0", "firmware": data["firmware"], "root_encrypted": data["encrypted"], "swap": data["swap"],
+              "local_tty1_autologin": data["autologin"],
+              "bootloader_installed": data["install_bootloader"],
+              "target_configuration": "verified", "installed_boot_test": "not-run-by-installer"}
+    receipt = STATE_DIR / "installation.json"
+    receipt.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    receipt.chmod(0o640)
+    (STATE_DIR / "calamares-target").unlink()
+    (STATE_DIR / "calamares-storage.json").unlink()
+    # These helpers have completed their sole purpose; package updates use the
+    # normal upstream grub-install and the persistent GRUB_DISTRIBUTOR setting.
+    Path("/usr/local/libexec/kythos-calamares-grub-install").unlink(missing_ok=True)
+    Path("/usr/local/libexec/kythos-calamares-target").unlink(missing_ok=True)
+    print("KythOS Kernal target configuration verified.")
+
+
+def main():
+    try:
+        if len(sys.argv) != 2 or sys.argv[1] not in ("configure", "verify"):
+            raise ValueError("Expected configure or verify.")
+        verify_target_context()
+        data = read_topology()
+        (prepare if sys.argv[1] == "configure" else verify)(data)
+    except (KeyError, OSError, ValueError, subprocess.CalledProcessError) as error:
+        # Do not dump account databases, topology dictionaries, or credentials.
+        print("KythOS Kernal target finalization failed: " + str(error), file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

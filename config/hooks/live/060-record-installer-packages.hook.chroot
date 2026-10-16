@@ -1,0 +1,84 @@
+#!/bin/sh
+set -eu
+umask 022
+
+# The native override is compiled against this exact packaged Calamares ABI.
+test "$(dpkg-query -W -f='${Version}' calamares)" = 3.3.14-1
+test -s /usr/lib/kythos/calamares/modules/partition/libcalamares_viewmodule_partition.so
+test -s /usr/lib/kythos/calamares/modules/partition/module.desc
+test -s /usr/share/kythos/calamares-partition-provenance.json
+
+# Resolve the live interface's dependency closure once, during the image build.
+# The target installer later purges this fixed list without autoremove.
+python3 - <<'PY'
+import os
+import re
+import subprocess
+from pathlib import Path
+
+root = Path('/usr/share/kythos')
+pattern = re.compile(r'[a-z0-9][a-z0-9+.-]*(?::[a-z0-9]+)?')
+
+def names(path):
+    values = path.read_text().splitlines()
+    if not values or any(not pattern.fullmatch(value) for value in values):
+        raise SystemExit('Invalid installer package roots: ' + str(path))
+    return set(values)
+
+base = names(root / 'installer-base-package-roots')
+live = names(root / 'installer-live-package-roots')
+query = subprocess.run(
+    ['dpkg-query', '-W', '-f=${binary:Package}\t${Status}\t${Priority}\t${Essential}\n'],
+    check=True, text=True, capture_output=True,
+)
+installed = {}
+protected = set(base)
+for line in query.stdout.splitlines():
+    package, status, priority, essential = line.split('\t')
+    if status != 'install ok installed':
+        continue
+    installed[package] = (priority, essential)
+    if package.split(':', 1)[0] in base or priority in {'required', 'important', 'standard'} or essential == 'yes':
+        protected.add(package)
+protected_normalized = {value.split(':', 1)[0] for value in protected}
+installed_normalized = {value.split(':', 1)[0] for value in installed}
+if live & protected_normalized:
+    raise SystemExit('A live-only root overlaps the common base: ' + ', '.join(sorted(live & protected_normalized)))
+if not live <= installed_normalized:
+    raise SystemExit('A requested live interface package is not installed')
+
+# Keep the common roots explicitly installed, including standard utilities.
+# This does not perform any package removal in the build chroot.
+subprocess.run(['apt-mark', 'manual', *sorted(protected & set(installed))],
+               check=True, stdout=subprocess.DEVNULL)
+plan = subprocess.run(
+    ['apt-get', '--simulate', '--auto-remove', 'purge', '--', *sorted(live)],
+    check=True, text=True, capture_output=True,
+    env={**os.environ, 'LC_ALL': 'C', 'DEBIAN_FRONTEND': 'noninteractive'},
+)
+if re.search(r'^Inst\s', plan.stdout, re.MULTILINE):
+    raise SystemExit('Removing the installer unexpectedly requests package installation')
+removed = set(re.findall(r'^(?:Remv|Purg)\s+(\S+)', plan.stdout, re.MULTILINE))
+if not live <= {value.split(':', 1)[0] for value in removed} or any(not pattern.fullmatch(value) for value in removed):
+    raise SystemExit('Installer removal plan is incomplete or malformed')
+normalized = {value.split(':', 1)[0] for value in removed}
+protected_normalized = {value.split(':', 1)[0] for value in protected}
+blocked = normalized & protected_normalized
+blocked |= {value for value in normalized if value.startswith(
+    ('linux-image-', 'linux-headers-', 'firmware-', 'grub-', 'shim-'))}
+if blocked:
+    raise SystemExit('Installer removal would affect the common system: ' + ', '.join(sorted(blocked)))
+for package in ('live-tools', 'live-boot-initramfs-tools'):
+    if package in installed_normalized and package not in normalized:
+        raise SystemExit('Live initramfs integration would remain in the target: ' + package)
+manifest = root / 'installer-live-packages'
+manifest.write_text('\n'.join(sorted(removed)) + '\n')
+manifest.chmod(0o644)
+(root / 'installer-removal-plan.txt').write_text(plan.stdout)
+print('Fixed live-only removal manifest:', len(removed), 'packages')
+PY
+
+# These entry points are available only to the temporary live account.
+chown root:root /etc/sudoers.d/kythos-live-installer
+chmod 0440 /etc/sudoers.d/kythos-live-installer
+visudo -cf /etc/sudoers.d/kythos-live-installer

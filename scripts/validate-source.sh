@@ -21,6 +21,7 @@ for script in \
     "$repo_root/auto/config" \
     "$repo_root/scripts/audit-source-coverage.sh" \
     "$repo_root/scripts/build.sh" \
+    "$repo_root/scripts/build-calamares-partition.sh" \
     "$repo_root/scripts/render-branding.py" \
     "$repo_root/scripts/validate-source.sh" \
     "$repo_root/tests/test-recovery-topology.sh" \
@@ -33,11 +34,20 @@ for script in \
     "$repo_root/config/hooks/live/020-enable-branding.hook.binary" \
     "$repo_root/config/hooks/live/020-enable-branding.hook.chroot" \
     "$repo_root/config/hooks/live/030-configure-authentication.hook.chroot" \
+    "$repo_root/config/hooks/live/060-record-installer-packages.hook.chroot" \
+    "$repo_root/config/hooks/live/030-record-installer-packages.hook.binary" \
     "$repo_root/config/includes.installer/usr/lib/debian-installer-startup.d/S19kythos-branding" \
     "$repo_root/config/includes.installer/usr/lib/kythos/debconf-loadtemplate" \
     "$repo_root/config/includes.installer/usr/lib/kythos/transform-installer-template" \
+    "$repo_root/config/includes.installer/usr/lib/finish-install.d/93kythos-live-cleanup" \
     "$repo_root/config/hooks/live/090-record-manifest.hook.chroot" \
     "$repo_root/config/includes.chroot/usr/local/bin/cy" \
+    "$repo_root/config/includes.chroot/usr/local/bin/kythos-installer" \
+    "$repo_root/config/includes.chroot/usr/local/bin/kythos-install" \
+    "$repo_root/config/includes.chroot/usr/local/libexec/kythos-live-guard" \
+    "$repo_root/config/includes.chroot/usr/local/libexec/kythos-live-session" \
+    "$repo_root/config/includes.chroot/usr/local/sbin/kythos-installer-root" \
+    "$repo_root/config/includes.chroot/usr/lib/live/config/1200-kythos-installer" \
     "$repo_root/config/includes.chroot/etc/update-motd.d/10-uname" \
     "$repo_root/config/includes.chroot/usr/local/libexec/kythos-aide-initialize" \
     "$repo_root/config/includes.chroot/usr/local/libexec/kythos-refresh-fips-config" \
@@ -65,6 +75,34 @@ PY
     test -x "$script" || fail "script is not executable: $script"
 done
 
+# Compile without generating host-version bytecode in the image recipe.
+python3 - "$repo_root" <<'PY' || fail 'Calamares or setup-guide syntax/configuration failed'
+from pathlib import Path
+import sys
+import yaml
+root = Path(sys.argv[1])
+programs = [root / 'config/includes.chroot/usr/local/bin' / name
+            for name in ('kythos-setup', 'kythos-hardware-status')]
+programs.append(root / 'config/includes.chroot/usr/local/sbin/kythos-fido-login')
+programs += sorted((root / 'config/includes.chroot/usr/local/libexec').glob('kythos-calamares-*'))
+programs += sorted((root / 'config/includes.chroot/etc/calamares/modules').glob('kythos-*/*.py'))
+for program in programs:
+    compile(program.read_text(), str(program), 'exec')
+for config in (root / 'config/includes.chroot/etc/calamares').rglob('*'):
+    if config.suffix in ('.conf', '.desc') and not isinstance(yaml.safe_load(config.read_text()), dict):
+        raise ValueError('Expected installer configuration map: ' + str(config))
+PY
+for installer_test in test-installer-removal-plan.py test-calamares-core.py test-setup-wizard.py test-fido2-login.py test-hardware-status.py; do
+    PYTHONDONTWRITEBYTECODE=1 python3 "$repo_root/tests/$installer_test" \
+        || fail "installer test failed: $installer_test"
+done
+check_contains "$repo_root/auto/config" 'components live-config.nocomponents=sudo,xinit'
+check_contains "$repo_root/config/bootloaders/grub-pc/grub.cfg" 'Install KythOS Kernal (Calamares)'
+check_contains "$repo_root/config/bootloaders/grub-pc/grub.cfg" 'Advanced graphical installer'
+check_contains "$repo_root/config/bootloaders/grub-pc/grub.cfg" 'Advanced text installer'
+check_contains "$repo_root/config/includes.chroot/etc/sudoers.d/kythos-live-installer" \
+    'kythos-installer-root ""'
+
 security_status="$repo_root/config/includes.chroot/usr/local/sbin/kythos-security-status"
 check_contains "$security_status" \
     "grep -q ' (enforce)$' /sys/kernel/security/apparmor/profiles"
@@ -88,7 +126,8 @@ check_contains "$config" "--ignore-system-defaults"
 check_contains "$config" 'https://snapshot.debian.org/archive/debian/'
 check_contains "$config" 'https://snapshot.debian.org/archive/debian-security/'
 check_contains "$config" 'audit=1 audit_backlog_limit=8192'
-check_contains "$repo_root/scripts/build.sh" 'find auto config scripts tests -type f -print0'
+check_contains "$repo_root/scripts/build.sh" 'find auto config scripts tests patches -type f'
+check_contains "$repo_root/scripts/build.sh" "--exclude='__pycache__/'"
 check_contains "$repo_root/scripts/build.sh" 'assets/branding/kythos-mark-cyan-source.png'
 check_contains "$repo_root/scripts/build.sh" 'tools/qemu-builder/preseed.cfg'
 check_contains "$repo_root/tools/qemu-builder/preseed.cfg" 'git live-build'

@@ -5,6 +5,12 @@ label live-@FLAVOUR@
 	initrd @INITRD@
 	append @APPEND_LIVE@
 
+label kythos-installer-@FLAVOUR@
+	menu label ^Install KythOS Kernal (Calamares)
+	linux @LINUX@
+	initrd @INITRD@
+	append @APPEND_LIVE@ kythos.installer=1
+
 label live-@FLAVOUR@-failsafe
 	menu label KythOS Kernal (^compatibility mode)
 	linux @LINUX@

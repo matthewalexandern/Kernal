@@ -1,0 +1,28 @@
+---
+componentName: kythos
+welcomeStyleCalamares: true
+welcomeExpandingLogo: true
+windowExpanding: normal
+windowSize: 1000px,720px
+windowPlacement: center
+strings:
+  productName: KythOS Kernal
+  shortProductName: KythOS Kernal
+  version: 0.1.0
+  shortVersion: 0.1
+  versionedName: KythOS Kernal 0.1.0
+  shortVersionedName: KythOS Kernal 0.1.0
+  bootloaderEntryName: KythOS Kernal
+sidebar: widget
+navigation: widget
+images:
+  productLogo: kythos-logo.png
+  productIcon: kythos-logo.png
+  productWelcome: kythos-logo.png
+slideshow: show.qml
+slideshowAPI: 2
+style:
+  SidebarBackground: "#071014"
+  SidebarText: "#d8e5eb"
+  SidebarTextCurrent: "#00d8ed"
+  SidebarBackgroundCurrent: "#12313a"

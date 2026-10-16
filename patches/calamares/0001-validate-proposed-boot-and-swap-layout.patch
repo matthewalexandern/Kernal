@@ -1,0 +1,332 @@
+Description: Validate proposed boot and encrypted swap layout before any disk jobs
+Author: KythOS contributors
+Forwarded: not-needed
+Last-Update: 2026-10-16
+
+Native guided, alongside, replacement and manual controls stay available. A
+plain root can contain boot files. The signed GRUB path needs public /boot for
+encrypted root. Selected swap must be encrypted when root is encrypted. Show a
+visible native-page explanation, disable Next only for these invalid plans,
+and defensively replace the partition queue with a failure job before writes.
+No passphrases are copied or logged by this patch.
+
+--- /dev/null
++++ b/src/modules/partition/KythosStoragePolicy.h
+@@ -0,0 +1,20 @@
++// SPDX-FileCopyrightText: 2026 KythOS contributors
++// SPDX-License-Identifier: GPL-3.0-or-later
++#ifndef KYTHOS_STORAGE_POLICY_H
++#define KYTHOS_STORAGE_POLICY_H
++
++namespace KythosStoragePolicy
++{
++enum class Issue { None, EncryptedBoot, MissingPublicBoot, PlaintextSwap };
++
++// Filesystem sizes and native guided/manual choices are intentionally absent.
++// A plain root may contain /boot. An encrypted root needs public boot files.
++inline Issue validate( bool rootEncrypted, bool separateBoot, bool bootEncrypted, bool plaintextClaimedSwap )
++{
++    if ( bootEncrypted ) return Issue::EncryptedBoot;
++    if ( rootEncrypted && !separateBoot ) return Issue::MissingPublicBoot;
++    if ( rootEncrypted && plaintextClaimedSwap ) return Issue::PlaintextSwap;
++    return Issue::None;
++}
++}
++#endif
+--- a/src/modules/partition/PartitionViewStep.cpp
++++ b/src/modules/partition/PartitionViewStep.cpp
+@@ -17,6 +17,8 @@
+ #include "core/BootLoaderModel.h"
+ #include "core/DeviceModel.h"
+ #include "core/PartitionCoreModule.h"
++#include "core/PartitionInfo.h"
++#include "KythosStoragePolicy.h"
+ #include "gui/ChoicePage.h"
+ #include "gui/PartitionBarsView.h"
+ #include "gui/PartitionLabelsView.h"
+@@ -24,6 +26,8 @@
+ #include "partition/FileSystem.h"
+ 
+ #include "Branding.h"
++#include "CppJob.h"
++#include "partition/PartitionIterator.h"
+ #include "GlobalStorage.h"
+ #include "JobQueue.h"
+ #include "utils/Gui.h"
+@@ -36,6 +40,7 @@
+ 
+ #include <kpmcore/core/device.h>
+ #include <kpmcore/core/partition.h>
++#include <kpmcore/fs/luks.h>
+ 
+ #include <QFormLayout>
+ #include <QMessageBox>
+@@ -99,6 +104,7 @@
+     m_waitingWidget = nullptr;
+ 
+     connect( m_core, &PartitionCoreModule::hasRootMountPointChanged, this, &PartitionViewStep::nextPossiblyChanged );
++    connect( m_core, &PartitionCoreModule::storageLayoutChanged, this, [ this ] { nextPossiblyChanged( true ); } );
+     connect( m_choicePage, &ChoicePage::nextStatusChanged, this, &PartitionViewStep::nextPossiblyChanged );
+ }
+ 
+@@ -406,17 +412,161 @@
+     }
+ }
+ 
++// KythOS validates only boot/encryption invariants, keeping native layout choices.
++// The model is still an in-memory proposal here; no disk jobs have run.
++struct KythosEncryptionState
++{
++    bool dependsOnCrypto = false;
++    bool fullyEncrypted = false;
++    bool known = true;
++    QStringList mappers;
++};
++
++static KythosEncryptionState
++kythosEncryptionState( const PartitionCoreModule* core, const Partition* partition, QSet< const Partition* > ancestors = {} )
++{
++    if ( !partition || ancestors.contains( partition ) ) return { false, false, false, {} };
++    ancestors.insert( partition );
++    const auto type = partition->fileSystem().type();
++    if ( type == FileSystem::Luks || type == FileSystem::Luks2 )
++    {
++        const auto* luks = dynamic_cast< const FS::luks* >( &partition->fileSystem() );
++        if ( !luks ) return { true, true, false, {} };
++        // A newly proposed LUKS volume has no UUID or mapper yet. Its disk and
++        // first sector identify the proposal without accessing any passphrase.
++        const QString identity = partition->devicePath() + ':' + QString::number( partition->firstSector() );
++        return { true, true, true, { identity } };
++    }
++    auto* devices = core->deviceModel();
++    for ( int i = 0; i < devices->rowCount(); ++i )
++    {
++        Device* device = devices->deviceForIndex( devices->index( i ) );
++        if ( device->deviceNode() != partition->devicePath() ) continue;
++        const auto* volumeGroup = dynamic_cast< const LvmDevice* >( device );
++        if ( !volumeGroup ) return {};
++        const auto physicalVolumes = core->proposedPhysicalVolumes( volumeGroup );
++        if ( physicalVolumes.isEmpty() ) return { false, false, false, {} };
++        KythosEncryptionState state { false, true, true, {} };
++        for ( const auto* pv : physicalVolumes )
++        {
++            const auto backing = kythosEncryptionState( core, pv, ancestors );
++            state.dependsOnCrypto = state.dependsOnCrypto || backing.dependsOnCrypto;
++            state.fullyEncrypted = state.fullyEncrypted && backing.fullyEncrypted;
++            state.known = state.known && backing.known;
++            state.mappers.append( backing.mappers );
++        }
++        state.mappers.removeDuplicates();
++        return state;
++    }
++    return {};
++}
++
++static QString
++kythosStorageLayoutError( const PartitionCoreModule* core )
++{
++    const Partition* root = core->findPartitionByMountPoint( "/" );
++    const Partition* boot = core->findPartitionByMountPoint( "/boot" );
++    if ( !root ) return QString();  // Native validation already requires root.
++    const auto rootState = kythosEncryptionState( core, root );
++    const auto bootState = boot ? kythosEncryptionState( core, boot ) : KythosEncryptionState();
++    bool plaintextSwap = false;
++    bool knownSwap = true;
++    QStringList swapBackingIdentities;
++    auto* devices = core->deviceModel();
++    for ( int i = 0; i < devices->rowCount(); ++i )
++    {
++        Device* device = devices->deviceForIndex( devices->index( i ) );
++        using Calamares::Partition::PartitionIterator;
++        for ( auto it = PartitionIterator::begin( device ); it != PartitionIterator::end( device ); ++it )
++        {
++            // Match fstab's claimed-swap semantics; untouched foreign swap is not used.
++            if ( PartitionInfo::format( *it ) && ( *it )->fileSystem().type() == FileSystem::LinuxSwap )
++            {
++                const auto swapState = kythosEncryptionState( core, *it );
++                plaintextSwap = plaintextSwap || !swapState.fullyEncrypted;
++                knownSwap = knownSwap && swapState.known;
++                swapBackingIdentities.append( swapState.mappers );
++            }
++        }
++    }
++    if ( !rootState.known || !bootState.known || !knownSwap )
++        return QObject::tr( "The encryption backing of this proposed volume group could not be determined. "
++                            "Review its physical volumes before continuing; no disk changes have been made." );
++    auto* gs = Calamares::JobQueue::instance()->globalStorage();
++    gs->insert( "kythosRootBackingIdentities", rootState.mappers );
++    gs->insert( "kythosRootFullyEncrypted", rootState.fullyEncrypted );
++    swapBackingIdentities.removeDuplicates();
++    gs->insert( "kythosSwapBackingIdentities", swapBackingIdentities );
++    const auto issue = KythosStoragePolicy::validate( rootState.dependsOnCrypto, boot != nullptr,
++                                                    bootState.dependsOnCrypto, plaintextSwap );
++    switch ( issue )
++    {
++    case KythosStoragePolicy::Issue::EncryptedBoot:
++        return QObject::tr( "The supported signed GRUB chain requires an unencrypted boot filesystem. "
++                            "Make /boot unencrypted, or use an unencrypted root that contains its boot files." );
++    case KythosStoragePolicy::Issue::MissingPublicBoot:
++        return QObject::tr( "Root depends on encrypted storage and requires a separate unencrypted /boot partition. "
++                            "Create or select /boot before continuing; its size is your choice." );
++    case KythosStoragePolicy::Issue::PlaintextSwap:
++        return QObject::tr( "Root encryption also requires encrypted swap. Encrypt or remove the selected "
++                            "swap partition, or choose a swap file inside encrypted root." );
++    case KythosStoragePolicy::Issue::None:
++        return QString();
++    }
++    return QString();
++}
++
++static void
++kythosShowStorageWarning( QWidget* page, const QString& message )
++{
++    if ( !page || !page->layout() )
++    {
++        return;
++    }
++    auto* label = page->findChild< QLabel* >( QStringLiteral( "kythosStorageWarning" ), Qt::FindDirectChildrenOnly );
++    if ( !label )
++    {
++        label = new QLabel( page );
++        label->setObjectName( QStringLiteral( "kythosStorageWarning" ) );
++        label->setWordWrap( true );
++        label->setTextFormat( Qt::PlainText );
++        label->setStyleSheet( QStringLiteral( "color: #b42318; padding: 6px;" ) );
++        page->layout()->addWidget( label );
++    }
++    label->setText( message );
++    label->setVisible( !message.isEmpty() );
++}
++
++class KythosStorageGuardJob : public Calamares::CppJob
++{
++public:
++    explicit KythosStorageGuardJob( const QString& message ) : m_message( message ) {}
++    QString prettyName() const override { return QObject::tr( "Validate the proposed storage layout" ); }
++    Calamares::JobResult exec() override
++    {
++        return Calamares::JobResult::error( QObject::tr( "The proposed storage layout cannot boot safely" ), m_message );
++    }
++private:
++    QString m_message;
++};
++
+ bool
+ PartitionViewStep::isNextEnabled() const
+ {
+     if ( m_choicePage && m_widget->currentWidget() == m_choicePage )
+     {
+-        return m_choicePage->isNextEnabled();
++        // Entering the native manual editor must not require a completed plan.
++        const QString error = m_config->installChoice() == Config::InstallChoice::Manual
++            ? QString() : kythosStorageLayoutError( m_core );
++        kythosShowStorageWarning( m_choicePage, error );
++        return m_choicePage->isNextEnabled() && error.isEmpty();
+     }
+ 
+     if ( m_manualPartitionPage && m_widget->currentWidget() == m_manualPartitionPage )
+     {
+-        return m_core->hasRootMountPoint();
++        const QString error = kythosStorageLayoutError( m_core );
++        kythosShowStorageWarning( m_manualPartitionPage, error );
++        return m_core->hasRootMountPoint() && error.isEmpty();
+     }
+ 
+     return false;
+@@ -947,6 +1097,13 @@
+ Calamares::JobList
+ PartitionViewStep::jobs() const
+ {
++    const QString error = kythosStorageLayoutError( m_core );
++    if ( !error.isEmpty() )
++    {
++        // Recheck at queue construction: an invalid plan gets only a failure
++        // job, so no ClearMounts, format, resize, or partition jobs can run.
++        return { Calamares::job_ptr( new KythosStorageGuardJob( error ) ) };
++    }
+     return m_core->jobs( m_config );
+ }
+ 
+--- a/src/modules/partition/core/PartitionCoreModule.cpp
++++ b/src/modules/partition/core/PartitionCoreModule.cpp
+@@ -737,6 +737,24 @@
+     return std::find_if( m_deviceInfos.begin(), m_deviceInfos.end(), condition ) != m_deviceInfos.end();
+ }
+ 
++QVector< const Partition* >
++PartitionCoreModule::proposedPhysicalVolumes( const LvmDevice* device ) const
++{
++    const auto* info = infoForDevice( device );
++    if ( info )
++    {
++        const auto& pending = info->jobs();
++        for ( auto it = pending.crbegin(); it != pending.crend(); ++it )
++        {
++            if ( const auto* resize = dynamic_cast< const ResizeVolumeGroupJob* >( it->data() ) )
++                return resize->proposedPhysicalVolumes();
++            if ( const auto* create = dynamic_cast< const CreateVolumeGroupJob* >( it->data() ) )
++                return create->proposedPhysicalVolumes();
++        }
++    }
++    return device->physicalVolumes();
++}
++
+ void
+ PartitionCoreModule::dumpQueue() const
+ {
+@@ -784,6 +802,7 @@
+     {
+         scanForEfiSystemPartitions();
+     }
++    Q_EMIT storageLayoutChanged();
+ }
+ 
+ void
+--- a/src/modules/partition/core/PartitionCoreModule.h
++++ b/src/modules/partition/core/PartitionCoreModule.h
+@@ -200,6 +200,7 @@
+     bool hasVGwithThisName( const QString& name ) const;
+ 
+     bool isInVG( const Partition* partition ) const;
++    QVector< const Partition* > proposedPhysicalVolumes( const LvmDevice* device ) const;
+ 
+     /**
+      * @brief findPartitionByMountPoint returns a Partition* for a given mount point.
+@@ -247,6 +248,7 @@
+ 
+ Q_SIGNALS:
+     void hasRootMountPointChanged( bool value );
++    void storageLayoutChanged();
+     void isDirtyChanged( bool value );
+     void reverted();
+     void deviceReverted( Device* device );
+--- a/src/modules/partition/jobs/CreateVolumeGroupJob.h
++++ b/src/modules/partition/jobs/CreateVolumeGroupJob.h
+@@ -28,6 +28,7 @@
+     QString prettyDescription() const override;
+     QString prettyStatusMessage() const override;
+     Calamares::JobResult exec() override;
++    const QVector< const Partition* >& proposedPhysicalVolumes() const { return m_pvList; }
+ 
+     void updatePreview();
+     void undoPreview();
+--- a/src/modules/partition/jobs/FillGlobalStorageJob.cpp
++++ b/src/modules/partition/jobs/FillGlobalStorageJob.cpp
+@@ -85,6 +85,7 @@
+ {
+     QVariantMap map;
+     map[ "device" ] = partition->partitionPath();
++    map[ "kythosBackingIdentity" ] = partition->devicePath() + ':' + QString::number( partition->firstSector() );
+     map[ "partlabel" ] = partition->label();
+     map[ "partuuid" ] = partition->uuid();
+     map[ "mountPoint" ] = PartitionInfo::mountPoint( partition );
+--- a/src/modules/partition/jobs/ResizeVolumeGroupJob.h
++++ b/src/modules/partition/jobs/ResizeVolumeGroupJob.h
+@@ -29,6 +29,7 @@
+     QString prettyDescription() const override;
+     QString prettyStatusMessage() const override;
+     Calamares::JobResult exec() override;
++    const QVector< const Partition* >& proposedPhysicalVolumes() const { return m_partitionList; }
+ 
+ private:
+     QString currentPartitions() const;

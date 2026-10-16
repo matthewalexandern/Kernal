@@ -6,6 +6,10 @@ KythOS Kernal is not affiliated with, sponsored by, or endorsed by Debian.
 Debian is a registered trademark owned by Software in the Public Interest, Inc.
 
 The KythOS-owned recipe is licensed under the accompanying MIT LICENSE.
+The Calamares partition-module patch and modified module retain Calamares'
+GPL-3.0-or-later license and upstream notices. The source ISO includes the
+exact Calamares source, KythOS patch, build script, and compiled-module
+provenance; see patches/calamares/README.md in its KythOS recipe.
 Included packages, firmware, and the Linux kernel retain their own copyright
 notices, licenses, authorship, package names, and source provenance. Their
 installed notices are available under /usr/share/doc. Corresponding source is

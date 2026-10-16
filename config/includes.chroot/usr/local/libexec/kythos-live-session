@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+if test "$#" -ne 0; then
+    printf '%s\n' 'The live graphical session does not accept arguments.' >&2
+    exit 2
+fi
+/usr/local/libexec/kythos-live-guard || exit 1
+test "$(/usr/bin/id -un)" = kythos-live || exit 1
+/usr/bin/xsetroot -solid '#070d17'
+/usr/bin/openbox --config-file /usr/share/kythos/live/openbox-rc.xml &
+window_manager=$!
+cleanup()
+{
+    kill "$window_manager" 2>/dev/null || true
+}
+trap cleanup EXIT HUP INT TERM
+/usr/local/bin/kythos-setup &
+wait "$window_manager"

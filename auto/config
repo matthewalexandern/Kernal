@@ -55,7 +55,7 @@ lb config noauto \
     --mirror-binary 'https://deb.debian.org/debian/' \
     --mirror-binary-security 'https://security.debian.org/debian-security/' \
     --mirror-debian-installer "$snapshot_debian" \
-    --bootappend-live 'boot=live components quiet splash audit=1 audit_backlog_limit=8192 hostname=kythos-live username=kythos-live locales=en_US.UTF-8 keyboard-layouts=us console=tty0 console=ttyS0,115200n8' \
+    --bootappend-live 'boot=live components live-config.nocomponents=sudo,xinit quiet splash audit=1 audit_backlog_limit=8192 hostname=kythos-live username=kythos-live locales=en_US.UTF-8 keyboard-layouts=us console=tty0' \
     --iso-application 'KythOS Kernal' \
     --iso-publisher 'KythOS' \
     --iso-volume 'KYTHOS_KERNAL' \

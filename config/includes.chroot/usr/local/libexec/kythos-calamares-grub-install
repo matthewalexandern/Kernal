@@ -1,0 +1,46 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: MIT
+"""Adapt native Calamares GRUB calls to Debian's signed boot installation.
+
+Debian grub-install maintains shim, signed GRUB, MokManager, fallback files,
+and the vendor redirect grub.cfg. We keep this machinery intact and never
+copy a raw GRUB image over the removable-path shim.
+"""
+import os
+from pathlib import Path
+import re
+import sys
+
+
+def grub_arguments(arguments):
+    if arguments == ["--target=x86_64-efi", "--efi-directory=/boot/efi",
+                     "--bootloader-id=kythos", "--force"]:
+        return ["--target=x86_64-efi", "--efi-directory=/boot/efi",
+                "--bootloader-id=kythos", "--recheck", "--uefi-secure-boot",
+                "--force-extra-removable"]
+    if (len(arguments) == 4 and arguments[:3] ==
+            ["--target=i386-pc", "--recheck", "--force"] and
+            re.fullmatch(r"/dev/[A-Za-z0-9_./+-]+", arguments[3]) and
+            "/../" not in arguments[3]):
+        # Refuse embedding by force. Ordinary whole disks and a BIOS boot
+        # partition work without it; unsafe blocklists should fail clearly.
+        return ["--target=i386-pc", "--recheck", arguments[3]]
+    raise ValueError("Unexpected Calamares bootloader arguments.")
+
+
+def main():
+    try:
+        arguments = grub_arguments(sys.argv[1:])
+        if "--target=x86_64-efi" in arguments:
+            for name in ("/usr/lib/shim/shimx64.efi.signed",
+                         "/usr/lib/grub/x86_64-efi-signed/grubx64.efi.signed"):
+                if not Path(name).is_file():
+                    raise ValueError("A required signed EFI boot component is missing.")
+        os.execv("/usr/sbin/grub-install", ["/usr/sbin/grub-install", *arguments])
+    except (OSError, ValueError) as error:
+        print(str(error), file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

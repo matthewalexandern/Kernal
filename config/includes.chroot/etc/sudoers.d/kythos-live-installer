@@ -1,0 +1,3 @@
+# Only fixed, argument-free entry points. Removed from installed targets.
+kythos-live ALL=(root) NOPASSWD: /usr/local/sbin/kythos-installer-root ""
+kythos-live ALL=(root) NOPASSWD: /usr/local/sbin/kythos-security-status ""

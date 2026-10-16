@@ -20,6 +20,14 @@
 - [ ] UEFI boot passed.
 - [ ] UEFI Secure Boot passed with Debian-signed shim, GRUB, and kernel.
 - [ ] Unencrypted and encrypted-LVM installation passed.
+- [ ] Calamares plain BIOS and LUKS2 UEFI Secure Boot installations passed;
+      manual size/mount-point editing and native pre-write guards were tested.
+- [ ] Live-only GUI packages, account, privilege rules and launchers are absent
+      from installed targets; the stock driver/module tree remains present.
+- [ ] The patched native partition module matches its runtime version and
+      provenance; its exact source, patch and GPL license ship together.
+- [ ] Physical FIDO2 enrollment, a newly registered key's authentication,
+      console login, spare key, disable and password recovery were tested.
 - [ ] Installed system boots, updates, and reports healthy security services.
 - [ ] Network, storage, audio, display, suspend/resume, and firmware checks
       passed on named physical test hardware.

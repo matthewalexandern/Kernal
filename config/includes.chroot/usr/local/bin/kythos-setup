@@ -1,0 +1,481 @@
+#!/usr/bin/python3
+"""Native live-media preparation guide. Calamares owns installation settings.
+
+The guide reads hardware state and starts a fixed launcher. It never stores
+accounts, partition choices, passwords, or installation plans.
+"""
+
+import json
+import os
+from pathlib import Path
+import platform
+import re
+import sys
+
+
+TITLE = "KythOS Kernal"
+INSTALL_LAUNCHER = "/usr/local/bin/kythos-install"
+LOGO = "/usr/share/plymouth/themes/kythos/kythos-logo.png"
+HARDWARE_COMMAND = "/usr/local/bin/kythos-hardware-status"
+
+
+def read_text(path, fallback=""):
+    try:
+        return path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return fallback
+
+
+def live_session(root=Path("/")):
+    return (
+        ((root / "run/live/medium").is_dir() or (root / "run/live/overlay").is_dir())
+        and "boot=live" in read_text(root / "proc/cmdline").split()
+    )
+
+
+def collect_readiness(root=Path("/")):
+    """Read-only observations. A detected disk is never selected for install."""
+    meminfo = read_text(root / "proc/meminfo")
+    match = re.search(r"^MemTotal:\s+(\d+)\s+kB$", meminfo, re.MULTILINE)
+    memory = round(int(match.group(1)) / 1024 / 1024, 1) if match else None
+    efi = (root / "sys/firmware/efi").is_dir()
+    secure_boot = "Unknown"
+    if not efi:
+        secure_boot = "Not available in BIOS boot"
+    else:
+        for variable in (root / "sys/firmware/efi/efivars").glob("SecureBoot-*"):
+            try:
+                contents = variable.read_bytes()
+                if len(contents) >= 5:
+                    secure_boot = {0: "Disabled", 1: "Enabled"}.get(contents[4], "Unknown")
+            except OSError:
+                pass
+            break
+    disks = []
+    for device in sorted((root / "sys/block").glob("*")):
+        if not re.match(r"^(?:sd[a-z]+|vd[a-z]+|xvd[a-z]+|nvme\d+n\d+|mmcblk\d+)$", device.name):
+            continue
+        sectors = read_text(device / "size")
+        size = round(int(sectors) * 512 / 1024**3, 1) if sectors.isdecimal() else None
+        model = read_text(device / "device/model")[:100]
+        disks.append({"name": device.name, "gib": size, "model": model})
+    graphics = []
+    for device in sorted((root / "sys/bus/pci/devices").glob("*")):
+        if not read_text(device / "class").startswith("0x03"):
+            continue
+        vendor = read_text(device / "vendor").lower()
+        name = {
+            "0x10de": "NVIDIA", "0x1002": "AMD", "0x8086": "Intel",
+            "0x1af4": "Virtio", "0x1234": "Virtual display",
+        }.get(vendor, vendor or "Unknown vendor")
+        graphics.append(name)
+    interfaces = []
+    for interface in sorted((root / "sys/class/net").glob("*")):
+        if interface.name != "lo":
+            interfaces.append({
+                "name": interface.name,
+                "up": read_text(interface / "operstate") == "up",
+            })
+    return {
+        "live": live_session(root),
+        "version": read_text(root / "usr/share/kythos/version", "0.1.0")[:80],
+        "kernel": platform.release(),
+        "cpu_threads": os.cpu_count(),
+        "memory_gib": memory,
+        "boot_mode": "UEFI" if efi else "Legacy BIOS",
+        "secure_boot": secure_boot,
+        "disks": disks,
+        "graphics": list(dict.fromkeys(graphics)),
+        "interfaces": interfaces,
+    }
+
+
+def build_window(info, *, start_hardware=True):
+    # Import lazily so diagnostics and fixture tests do not need GUI libraries.
+    from PyQt6.QtCore import Qt, QProcess, QSize, QTimer
+    from PyQt6.QtGui import QIcon, QPixmap
+    from PyQt6.QtWidgets import (
+        QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton,
+        QScrollArea, QSizePolicy, QStackedWidget, QVBoxLayout, QWidget,
+    )
+
+    class SetupWindow(QMainWindow):
+        def __init__(self):
+            super().__init__()
+            self.setWindowTitle(f"{TITLE} Setup")
+            self.setWindowIcon(QIcon(LOGO))
+            self.resize(1060, 720)
+            self.setMinimumSize(760, 540)
+            self.page_index = 0
+            self.installer = QProcess(self)
+            self.installer.setProgram(INSTALL_LAUNCHER)
+            self.installer.setArguments([])
+            self.installer.setStandardOutputFile(QProcess.nullDevice())
+            self.installer.setStandardErrorFile(QProcess.nullDevice())
+            self.installer.started.connect(self.installer_started)
+            self.installer.errorOccurred.connect(self.installer_error)
+            self.installer.finished.connect(self.installer_finished)
+            self.hardware_process = QProcess(self)
+            self.hardware_process.setProgram(HARDWARE_COMMAND)
+            self.hardware_process.setArguments(["--json"])
+            self.hardware_process.setStandardErrorFile(QProcess.nullDevice())
+            self.hardware_output = bytearray()
+            self.hardware_failure_reason = ""
+            self.hardware_process.readyReadStandardOutput.connect(self.read_hardware_output)
+            self.hardware_process.finished.connect(self.hardware_finished)
+            self.hardware_process.errorOccurred.connect(self.hardware_error)
+            self.hardware_timer = QTimer(self)
+            self.hardware_timer.setSingleShot(True)
+            self.hardware_timer.timeout.connect(self.hardware_timeout)
+            self.setStyleSheet("""
+                QMainWindow, QWidget { background:#0c1522; color:#e5eef5; font-size:14px; }
+                QWidget#sidebar { background:#07101b; }
+                QWidget#sidebar QLabel { background:transparent; }
+                QLabel#brand { color:#00d5e8; font-size:24px; font-weight:700; }
+                QLabel#eyebrow { color:#00d5e8; font-size:12px; font-weight:700; }
+                QLabel#heading { color:#f4faff; font-size:30px; font-weight:600; }
+                QLabel#body { color:#b5c6d5; font-size:15px; }
+                QLabel#step { color:#7d93a6; padding:12px 10px; border-left:2px solid #233346; }
+                QLabel#step[active="true"] { color:#00d5e8; border-left:2px solid #00d5e8; background:#0d2030; }
+                QFrame#card { background:#111f30; border:1px solid #263a50; border-radius:9px; }
+                QFrame#card QLabel { background:transparent; }
+                QPushButton { border:1px solid #365168; padding:11px 19px; border-radius:6px; background:#17283a; }
+                QPushButton:hover { background:#203a50; border-color:#00b7cd; }
+                QPushButton#primary { color:#001820; background:#00cfe4; border:1px solid #00cfe4; font-weight:700; }
+                QPushButton#primary:hover { background:#3ae4ef; }
+                QPushButton:disabled { color:#586c80; background:#122031; border-color:#233346; }
+                QScrollArea { border:0; }
+                QScrollBar:vertical { background:#0c1522; width:10px; }
+                QScrollBar::handle:vertical { background:#365168; min-height:20px; border-radius:4px; }
+                QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height:0; }
+                QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background:transparent; }
+            """)
+            central = QWidget()
+            self.setCentralWidget(central)
+            outer = QHBoxLayout(central)
+            outer.setContentsMargins(0, 0, 0, 0)
+            outer.setSpacing(0)
+            sidebar = QWidget()
+            sidebar.setObjectName("sidebar")
+            sidebar.setFixedWidth(230)
+            rail = QVBoxLayout(sidebar)
+            rail.setContentsMargins(25, 30, 25, 28)
+            logo = QLabel()
+            pixmap = QPixmap(LOGO)
+            if not pixmap.isNull():
+                logo.setPixmap(pixmap.scaled(QSize(145, 110), Qt.AspectRatioMode.KeepAspectRatio,
+                                            Qt.TransformationMode.SmoothTransformation))
+            logo.setAlignment(Qt.AlignmentFlag.AlignLeft)
+            rail.addWidget(logo)
+            brand = QLabel("KythOS\nKernal")
+            brand.setObjectName("brand")
+            rail.addWidget(brand)
+            rail.addSpacing(35)
+            self.steps = []
+            for number, title in enumerate(("Welcome", "Your hardware", "Installation choices", "Begin installation"), 1):
+                label = QLabel(f"{number:02d}   {title}")
+                label.setObjectName("step")
+                label.setWordWrap(True)
+                self.steps.append(label)
+                rail.addWidget(label)
+            rail.addStretch()
+            foot = QLabel(f"COMMON BASE  •  {info['version']}\nLive installation media")
+            foot.setStyleSheet("color:#6e879c;font-size:11px;line-height:1.5;")
+            foot.setWordWrap(True)
+            rail.addWidget(foot)
+            outer.addWidget(sidebar)
+            main = QVBoxLayout()
+            main.setContentsMargins(36, 34, 36, 26)
+            main.setSpacing(18)
+            self.pages = QStackedWidget()
+            main.addWidget(self.pages, 1)
+            self.add_welcome()
+            self.add_hardware()
+            self.add_choices()
+            self.add_begin()
+            self.status = self.label("", "body")
+            main.addWidget(self.status)
+            nav = QHBoxLayout()
+            self.close_button = QPushButton("Close guide")
+            self.close_button.clicked.connect(self.close)
+            nav.addWidget(self.close_button)
+            nav.addStretch()
+            self.back_button = QPushButton("Back")
+            self.back_button.clicked.connect(lambda: self.change_page(-1))
+            nav.addWidget(self.back_button)
+            self.next_button = QPushButton("Next")
+            self.next_button.setObjectName("primary")
+            self.next_button.clicked.connect(self.next_action)
+            nav.addWidget(self.next_button)
+            main.addLayout(nav)
+            outer.addLayout(main, 1)
+            self.refresh_navigation()
+            if start_hardware:
+                QTimer.singleShot(0, self.refresh_hardware)
+
+        @staticmethod
+        def label(text, name="body"):
+            label = QLabel(text)
+            label.setTextFormat(Qt.TextFormat.PlainText)
+            label.setObjectName(name)
+            label.setWordWrap(True)
+            label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+            return label
+
+        def page(self, eyebrow, title, intro):
+            content = QWidget()
+            layout = QVBoxLayout(content)
+            layout.setContentsMargins(0, 0, 10, 0)
+            layout.setSpacing(18)
+            layout.addWidget(self.label(eyebrow.upper(), "eyebrow"))
+            layout.addWidget(self.label(title, "heading"))
+            layout.addWidget(self.label(intro))
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setWidget(content)
+            self.pages.addWidget(scroll)
+            return layout
+
+        def card(self, layout, title, text):
+            card = QFrame()
+            card.setObjectName("card")
+            box = QVBoxLayout(card)
+            box.setContentsMargins(20, 17, 20, 18)
+            box.setSpacing(8)
+            heading = self.label(title)
+            heading.setStyleSheet("font-size:16px;font-weight:600;color:#e5f5fc;")
+            box.addWidget(heading)
+            body = self.label(text)
+            box.addWidget(body)
+            layout.addWidget(card)
+            return body
+
+        def add_welcome(self):
+            layout = self.page("Welcome", "A foundation you can build on.",
+                               "Prepare this computer for KythOS Kernal, then open the installer.")
+            self.card(layout, "One common base", "This image installs the shared KythOS Kernal baseline. "
+                      "Desktop, Server, Hypervisor, and AI Server editions will build on this foundation; "
+                      "edition selection is not included in this image.")
+            self.card(layout, "Your installation choices", "Review detected hardware, then choose your language, "
+                      "keyboard, account, disks, and encryption in Calamares. Guided and manual partitioning "
+                      "are available.")
+            self.card(layout, "Advanced disk layouts", "Use Calamares' manual partition editor to control your layout "
+                      "and mount points. The boot menu also keeps the advanced graphical and text installers "
+                      "available for additional storage workflows.")
+            layout.addWidget(self.label("Opening Calamares does not change a disk. "
+                                        "Review its summary and confirm before installation begins."))
+            layout.addStretch()
+
+        def add_hardware(self):
+            layout = self.page("Readiness", "Your hardware", "These observations describe the live session. "
+                               "Review and select the installation disk inside Calamares.")
+            memory = f"{info['memory_gib']:.1f} GiB RAM" if info["memory_gib"] is not None else "RAM unavailable"
+            self.card(layout, "Computer", f"{info['cpu_threads'] or 'Unknown'} CPU threads  •  {memory}\n"
+                      f"{info['boot_mode']}  •  Secure Boot: {info['secure_boot']}")
+            disk_lines = [f"{d['name']}  —  {d['gib'] if d['gib'] is not None else '?'} GiB"
+                          + (f"  •  {d['model']}" if d['model'] else "") for d in info["disks"]]
+            self.card(layout, "Detected storage", "\n".join(disk_lines) or
+                      "No installation disks detected. Check storage connections or virtual-machine settings.")
+            graphics = ", ".join(info["graphics"]) or "No PCI graphics adapter detected"
+            link = "A network link is up." if any(item["up"] for item in info["interfaces"]) else "No active network link detected."
+            self.card(layout, "Graphics & network", f"Graphics: {graphics}\n{link} "
+                      "The base image can be installed without an internet connection.")
+            self.driver_details = self.card(layout, "Detected drivers", "Reading current driver bindings…")
+            self.firmware_details = self.card(layout, "Firmware observations", "Reading the current boot's kernel messages…")
+            self.nvidia_button = QPushButton("NVIDIA readiness details")
+            self.nvidia_button.setVisible(False)
+            self.nvidia_button.clicked.connect(self.show_nvidia_details)
+            layout.addWidget(self.nvidia_button)
+            refresh = QPushButton("Refresh hardware observations")
+            refresh.clicked.connect(self.refresh_hardware)
+            layout.addWidget(refresh)
+            if info["memory_gib"] is not None and info["memory_gib"] < 2:
+                self.card(layout, "Limited memory", "Less than 2 GiB RAM is available. "
+                          "The graphical installer may be slow or run out of memory.")
+            layout.addStretch()
+
+        def add_choices(self):
+            layout = self.page("Before you begin", "Installation choices", "Make these choices in Calamares, "
+                               "where they are applied directly to your installation.")
+            self.card(layout, "Disks & encryption", "Choose guided installation or use the manual partition editor "
+                      "to select partitions and mount points. Encryption is available in the disk step. "
+                      "Review which partitions will be formatted before confirming. Keep your recovery passphrase "
+                      "safe; optional TPM unlock is configured after installation.")
+            self.card(layout, "Existing systems", "Use the partition editor to review the available space and existing "
+                      "partitions. Additional advanced graphical and text installers are available from the boot menu. "
+                      "Back up any files you want to keep before changing a disk.")
+            self.card(layout, "Account & access", "Choose your account and a nonempty password in the user step. "
+                      "There is no added password-complexity policy. SSH password authentication is supported; "
+                      "the common-base firewall restricts incoming connections until you allow the required services.")
+            self.card(layout, "FIDO security keys", "FIDO security-key login can be configured after installation. "
+                      "Keep your account password and recovery access available during enrollment.")
+            self.card(layout, "Security & hardware", "The base includes audit logging, file-integrity checks, "
+                      "AppArmor, and automatic security updates. Additional GPU drivers can be installed afterward. "
+                      "FIPS validation and a full STIG assessment are not complete.")
+            layout.addStretch()
+
+        def refresh_hardware(self):
+            if self.hardware_process.state() != QProcess.ProcessState.NotRunning:
+                return
+            self.hardware_output.clear()
+            self.hardware_failure_reason = ""
+            self.nvidia_details = ""
+            self.nvidia_button.setVisible(False)
+            self.driver_details.setText("Reading current driver bindings…")
+            self.firmware_details.setText("Reading the current boot's kernel messages…")
+            self.hardware_process.start()
+            self.hardware_timer.start(15000)
+
+        def read_hardware_output(self):
+            if self.hardware_process.bytesAvailable():
+                self.hardware_output.extend(bytes(self.hardware_process.readAllStandardOutput()))
+            if len(self.hardware_output) > 524288:
+                self.hardware_failure_reason = "Hardware diagnostic output exceeded the size limit. Run kythos-hardware-status in a terminal."
+                self.hardware_process.kill()
+                self.hardware_error(None)
+
+        def hardware_timeout(self):
+            if self.hardware_process.state() != QProcess.ProcessState.NotRunning:
+                self.hardware_failure_reason = "Hardware observation timed out. Run kythos-hardware-status in a terminal for details."
+                self.hardware_process.kill()
+                self.hardware_error(None)
+
+        def hardware_error(self, error):
+            self.hardware_timer.stop()
+            self.driver_details.setText(self.hardware_failure_reason or
+                                       "Driver observations are unavailable. Run kythos-hardware-status in a terminal.")
+            self.firmware_details.setText("Firmware status is unknown until kernel messages can be read.")
+
+        def hardware_finished(self, exit_code, exit_status):
+            self.hardware_timer.stop()
+            self.read_hardware_output()
+            if exit_code != 0 or exit_status != QProcess.ExitStatus.NormalExit:
+                self.hardware_error(None)
+                return
+            try:
+                report = json.loads(self.hardware_output)
+                if report.get("schema") != 1 or report.get("mode") != "read-only":
+                    raise ValueError("Unknown hardware report")
+                lines = []
+                for group, title in (("graphics", "Graphics"), ("network", "Network"), ("storage", "Storage")):
+                    for device in report[group]:
+                        driver = device["driver"] or device["status"]
+                        module = f" (module: {device['module']})" if device["module"] else ""
+                        lines.append(f"{title} {device['name']}: {driver}{module}")
+                unresolved = [device for device in report["pci"] + report["usb"]
+                              if device["status"] == "unbound" and device["kind"] in
+                              ("graphics", "storage", "network", "wireless", "multimedia", "input", "vendor-specific")]
+                for device in unresolved[:12]:
+                    candidate = ", ".join(device["candidate_modules"]) or "none identified"
+                    lines.append(f"Needs review: {device['kind']} {device['address']} — no binding; module candidates: {candidate}")
+                self.driver_details.setText("\n".join(lines) or "No hardware driver bindings were visible to this session.")
+                firmware = report["firmware"]
+                firmware_text = firmware["status"].replace("-", " ").capitalize() + ".\n" + firmware["scope"]
+                if firmware["possible_failures"]:
+                    firmware_text += "\n" + "\n".join(firmware["possible_failures"][:5])
+                self.firmware_details.setText(firmware_text + "\nA driver binding does not prove every device function. "
+                                              "Linux and udev handle driver loading automatically.")
+                self.nvidia_details = (report.get("nvidia") or {}).get("details", "")
+                self.nvidia_button.setVisible(bool(self.nvidia_details))
+            except (ValueError, KeyError, TypeError):
+                self.hardware_error(None)
+
+        def show_nvidia_details(self):
+            message = QMessageBox(self)
+            message.setWindowTitle("KythOS Kernal NVIDIA readiness")
+            message.setText("Local NVIDIA readiness observations. Driver selection can be completed after installation.")
+            message.setDetailedText(self.nvidia_details)
+            message.exec()
+
+        def add_begin(self):
+            layout = self.page("Ready", "Begin installation", "Continue to the KythOS Kernal installer.")
+            self.card(layout, "Next: Calamares", "Choose your language, location, keyboard, storage layout, "
+                      "encryption, and account. Review the final summary before confirming installation.")
+            self.card(layout, "Your existing files", "Copy any files you want to keep to another device first. "
+                      "The erase-disk option deletes existing data on the selected disk.")
+            if not info["live"]:
+                self.card(layout, "Live media required", "This guide can be reviewed here. "
+                          "To install, boot the KythOS Kernal live image and choose Install KythOS Kernal.")
+            layout.addStretch()
+
+        def change_page(self, delta):
+            self.page_index = max(0, min(3, self.page_index + delta))
+            self.pages.setCurrentIndex(self.page_index)
+            self.refresh_navigation()
+
+        def refresh_navigation(self):
+            running = self.installer.state() != QProcess.ProcessState.NotRunning
+            self.back_button.setEnabled(self.page_index > 0 and not running)
+            self.next_button.setText("Open installer" if self.page_index == 3 else "Next")
+            self.next_button.setEnabled(not running and (self.page_index != 3 or info["live"]))
+            for number, step in enumerate(self.steps):
+                step.setProperty("active", number == self.page_index)
+                step.style().unpolish(step)
+                step.style().polish(step)
+
+        def next_action(self):
+            if self.page_index < 3:
+                self.change_page(1)
+                return
+            if not info["live"] or self.installer.state() != QProcess.ProcessState.NotRunning:
+                return
+            self.status.setText("Opening Calamares…")
+            self.installer.start()
+            self.refresh_navigation()
+
+        def installer_started(self):
+            self.status.setText("Calamares is open. Finish or cancel installation there.")
+            self.hide()
+
+        def installer_error(self, error):
+            self.show()
+            self.status.setText("The installer could not start. Reopen the graphical session or use the terminal to inspect it.")
+            self.refresh_navigation()
+
+        def installer_finished(self, exit_code, exit_status):
+            self.show()
+            self.raise_()
+            if exit_status == QProcess.ExitStatus.CrashExit or exit_code != 0:
+                self.status.setText("The installer exited with an error. You can reopen it or inspect the live-session logs.")
+            else:
+                self.status.setText("The installer has closed. You can reopen it or close this guide.")
+            self.refresh_navigation()
+
+        def closeEvent(self, event):
+            if self.installer.state() != QProcess.ProcessState.NotRunning:
+                QMessageBox.information(self, TITLE, "Finish or cancel in Calamares before closing this guide.")
+                event.ignore()
+            else:
+                if self.hardware_process.state() != QProcess.ProcessState.NotRunning:
+                    self.hardware_process.kill()
+                    self.hardware_process.waitForFinished(1000)
+                event.accept()
+
+    return SetupWindow()
+
+
+def main():
+    if sys.argv[1:] == ["--check"]:
+        print(json.dumps(collect_readiness(), indent=2))
+        return 0
+    if sys.argv[1:] == ["--help"]:
+        print("Usage: kythos-setup [--check]\nReview the live system and open the KythOS Kernal installer.")
+        return 0
+    if sys.argv[1:]:
+        print("Usage: kythos-setup [--check]", file=sys.stderr)
+        return 2
+    try:
+        from PyQt6.QtWidgets import QApplication
+    except ImportError:
+        print("The native setup guide requires the python3-pyqt6 live-media package.", file=sys.stderr)
+        return 1
+    application = QApplication([sys.argv[0]])
+    application.setApplicationName(f"{TITLE} Setup")
+    application.setStyle("Fusion")
+    window = build_window(collect_readiness())
+    window.show()
+    return application.exec()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

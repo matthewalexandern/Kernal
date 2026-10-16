@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <focus><focusNew>yes</focusNew><followMouse>no</followMouse></focus>
+  <placement><policy>Smart</policy><center>yes</center></placement>
+  <theme><name>Onyx</name><titleLayout>NLIMC</titleLayout></theme>
+  <desktops><number>1</number><firstdesk>1</firstdesk><names><name>Installation</name></names></desktops>
+  <keyboard>
+    <keybind key="A-F4"><action name="Close"/></keybind>
+    <keybind key="A-Tab"><action name="NextWindow"/></keybind>
+    <keybind key="W-Return"><action name="Execute"><command>/usr/bin/x-terminal-emulator</command></action></keybind>
+    <keybind key="W-i"><action name="Execute"><command>/usr/local/bin/kythos-setup</command></action></keybind>
+  </keyboard>
+  <mouse>
+    <context name="Root">
+      <mousebind button="Right" action="Press"><action name="ShowMenu"><menu>root-menu</menu></action></mousebind>
+    </context>
+    <context name="Titlebar">
+      <mousebind button="Left" action="Drag"><action name="Move"/></mousebind>
+      <mousebind button="Left" action="DoubleClick"><action name="ToggleMaximize"/></mousebind>
+    </context>
+    <context name="Close"><mousebind button="Left" action="Click"><action name="Close"/></mousebind></context>
+    <context name="Maximize"><mousebind button="Left" action="Click"><action name="ToggleMaximize"/></mousebind></context>
+    <context name="Iconify"><mousebind button="Left" action="Click"><action name="Iconify"/></mousebind></context>
+  </mouse>
+  <menu><file>/usr/share/kythos/live/openbox-menu.xml</file></menu>
+  <applications><application class="*"><focus>yes</focus><position force="no"><x>center</x><y>center</y></position></application></applications>
+</openbox_config>

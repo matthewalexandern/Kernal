@@ -1,0 +1,29 @@
+#!/bin/sh
+# Explicitly start the small installation session from the live console.
+set -eu
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+if test "$#" -ne 0; then
+    printf '%s\n' 'Usage: kythos-installer' >&2
+    exit 2
+fi
+if ! /usr/local/libexec/kythos-live-guard; then
+    printf '%s\n' 'Start the installer from KythOS Kernal live media.' >&2
+    exit 1
+fi
+if test "$(/usr/bin/id -un)" != kythos-live; then
+    printf '%s\n' 'Run kythos-installer as the kythos-live user on the live console.' >&2
+    exit 1
+fi
+if test -n "${DISPLAY:-}"; then
+    if test "$DISPLAY" != :0 && test "$DISPLAY" != :0.0; then
+        printf '%s\n' 'The installation session uses the local display :0.' >&2
+        exit 1
+    fi
+    exec /usr/local/bin/kythos-setup
+fi
+case "$(/usr/bin/tty 2>/dev/null || true)" in
+    /dev/tty[0-9]*) ;;
+    *) printf '%s\n' 'Run kythos-installer at a local virtual console.' >&2; exit 1 ;;
+esac
+exec /usr/bin/startx /usr/local/libexec/kythos-live-session -- :0 -nolisten tcp

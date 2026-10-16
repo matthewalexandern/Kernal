@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+
+# The advanced installer owns partitioning, accounts, packages and boot setup.
+# Remove only the live interface's custom files after those native steps,
+# before the stock 95umount component detaches /target.
+if test -x /target/usr/local/libexec/kythos-calamares-clean-live-files; then
+    in-target /usr/local/libexec/kythos-calamares-clean-live-files
+fi

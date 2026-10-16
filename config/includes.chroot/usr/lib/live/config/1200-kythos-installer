@@ -1,0 +1,16 @@
+#!/bin/sh
+# Run after live-config user setup. Console auto-login stays unprivileged.
+set -eu
+/usr/local/libexec/kythos-live-guard || exit 0
+test -d /home/kythos-live || exit 0
+cat > /etc/profile.d/zz-kythos-installer.sh <<'PROFILE'
+# KythOS live-media installation entry; removed from the installed target.
+if [ -z "${DISPLAY:-}" ] \
+    && [ "$(id -un)" = kythos-live ] \
+    && [ "$(tty 2>/dev/null)" = /dev/tty1 ] \
+    && /usr/local/libexec/kythos-live-guard \
+    && grep -Eq '(^|[[:space:]])kythos\.installer=1([[:space:]]|$)' /proc/cmdline; then
+    /usr/local/bin/kythos-installer
+fi
+PROFILE
+chmod 0644 /etc/profile.d/zz-kythos-installer.sh

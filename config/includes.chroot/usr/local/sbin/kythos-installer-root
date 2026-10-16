@@ -1,0 +1,37 @@
+#!/bin/sh
+# The only passwordless installer entry. No caller-selected command/config.
+set -eu
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+umask 077
+if test "$#" -ne 0; then
+    printf '%s\n' 'The installer launcher does not accept arguments.' >&2
+    exit 2
+fi
+if test "$(/usr/bin/id -u)" -ne 0; then
+    printf '%s\n' 'The installer launcher requires root.' >&2
+    exit 1
+fi
+if ! /usr/local/libexec/kythos-live-guard; then
+    printf '%s\n' 'The installer launcher is restricted to live media.' >&2
+    exit 1
+fi
+if test ! -f /home/kythos-live/.Xauthority || test -L /home/kythos-live/.Xauthority; then
+    printf '%s\n' 'The live graphical session is not ready. Run kythos-installer.' >&2
+    exit 1
+fi
+if test ! -x /usr/bin/calamares || test ! -r /etc/calamares/settings.conf; then
+    printf '%s\n' 'The installation files are unavailable.' >&2
+    exit 1
+fi
+cd /
+# Keep Qt plugins, Python imports, config paths, and the display fixed. This
+# installer requires the local live X server; no caller environment is passed.
+exec /usr/bin/env -i \
+    HOME=/root USER=root LOGNAME=root \
+    PATH=/usr/sbin:/usr/bin:/sbin:/bin \
+    LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
+    DISPLAY=:0 XAUTHORITY=/home/kythos-live/.Xauthority \
+    XDG_CONFIG_DIRS=/etc/xdg XDG_DATA_DIRS=/usr/local/share:/usr/share \
+    QT_QPA_PLATFORM=xcb \
+    /usr/bin/calamares

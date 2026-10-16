@@ -41,6 +41,12 @@ Archive selection and update-service explanations continue to identify the
 actual upstream provider. The filter does not rename the upstream archive as
 if it were a KythOS service.
 
+Calamares uses the KythOS Kernal product name and the approved cyan mark in its
+own branding directory. The separate native setup guide uses the same mark
+and names the common base accurately; it does not present future editions as
+available installation choices. Upstream Calamares and package license
+notices remain available.
+
 The OS release files are locally diverted through dpkg so a base-files upgrade
 delivers its upstream identity to the `.distrib` paths and preserves the KythOS
 identity. Both `/etc/os-release` and `/usr/lib/os-release` identify the system

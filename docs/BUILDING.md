@@ -4,9 +4,19 @@
 
 Use a clean Debian 13 amd64 environment. The builder needs root inside that
 environment because live-build creates chroots and mounts filesystems. Install
-`python3-pil` as well as the live-build prerequisites because source validation
-re-renders the checked-in branding in memory. Do not run the Ubuntu host's
+`python3-pil`, `python3-yaml` and `python3-jsonschema` as well as the live-build prerequisites because
+source validation checks the installer configuration and re-renders the
+checked-in branding in memory. Do not run the Ubuntu host's
 older live-build package against this recipe.
+
+Enable authenticated `deb-src` entries in the Debian guest and install the
+native partition module's build dependencies with `apt-get build-dep
+calamares`, plus `build-essential` and `patch`. The build fetches the exact
+Debian `calamares=3.3.14-1` source and builds only its partition module with
+KythOS' pre-write layout checks. The override module has its own directory;
+the packaged Calamares files are preserved. A different runtime Calamares
+version requires review and a rebuild of the patch. The source ISO carries
+the corresponding upstream source, patch, build script, test and GPL license.
 
 For an isolated build on the current workstation, use a disposable QEMU/KVM
 guest installed from an official, signature-verified Debian 13 netinst ISO.
@@ -110,15 +120,43 @@ The corresponding stock kernel drivers remain present.
    syntax in the Debian builder.
 2. Build the binary and source ISOs and verify their SHA-256 checksums.
 3. Boot the binary ISO using legacy BIOS and UEFI Secure Boot.
-4. Run both unencrypted and encrypted-LVM installations on disposable disks.
+4. Run Calamares plain BIOS and LUKS2 UEFI Secure Boot installations on
+   disposable disks, exercise manual partition creation and pre-write layout
+   checks, and test the advanced installer's encrypted-LVM path.
 5. Boot the installed system and verify APT updates, AppArmor, auditd,
    nftables, networking, and the full module tree. Capture a fresh installed
    package manifest with `dpkg-query`; the manifest embedded in the ISO records
    the live image before installer-only packages are removed.
-6. Test on physical hardware before making any driver-support claim.
+6. Confirm live-only packages, accounts, custom sudo rules and GUI launchers
+   are absent from installed targets. Check read-only hardware diagnostics
+   and the unenrolled FIDO2 state without altering host authentication.
+7. On real hardware, test graphics, network, storage, audio, firmware,
+   suspend/resume, signed NVIDIA modules and FIDO2 enrollment, login and
+   recovery. A VM does not certify those physical-device paths.
 
-The graphical installer is included for accessibility; it does not become a
-desktop environment in the installed base. Its header uses original KythOS
+Calamares and the separate Qt6 setup guide use a small live-only Xorg/Openbox
+session. The primary install boot entry opens the guide as `kythos-live`;
+only the fixed, argument-free Calamares privilege wrapper may elevate through
+the live installer sudo rule. The generic live-config sudo and xinit
+components are disabled, so they cannot add unrestricted sudo or an
+independent graphical restart loop. Stock signed kernel modules and firmware
+remain in both the live and installed systems.
+
+During the build, common package roots and required/important/standard
+packages are marked as manually installed. A simulated APT purge resolves the
+live interface's full removable dependency set. The build refuses any plan
+that includes common roots, essential packages, kernel, firmware or bootloader
+packages. Calamares purges that fixed list without autoremove. The advanced
+installer receives the same list and keeps its native package postprocessing;
+the common roots remain explicitly installed. Custom live privileges,
+profiles, accounts and interface files are also removed. The installed common
+base therefore starts at a console rather than becoming a desktop edition.
+
+The advanced graphical installer is retained for its accessibility and
+additional storage workflows. Calamares also exposes native manual
+partitioning, with sizes and mount points editable by the user. Its small
+native source patch validates the in-memory boot and swap plan before any
+partition job can execute. The advanced installer's header uses original KythOS
 artwork through live-build's installer overlay. Debian Installer component,
 copyright, source, and license notices remain available where required.
 KythOS identity is written to both OS release files and both ISO disk labels.

@@ -1,0 +1,590 @@
+#!/usr/bin/python3
+"""Safely enroll FIDO2 credentials for passwordless local console login."""
+
+from __future__ import annotations
+
+import argparse
+from dataclasses import dataclass
+import fcntl
+import os
+from pathlib import Path
+import pwd
+import re
+import secrets
+import stat
+import subprocess
+import sys
+import tempfile
+from typing import Callable
+
+
+ORIGIN = "pam://kythos-local"
+INCLUDE_LINE = "@include kythos-fido2"
+COMMON_AUTH_LINE = "@include common-auth"
+FRAGMENT_TEXT = (
+    "# KythOS local-console FIDO2 path.  kythos-fido-login adds this service to\n"
+    "# /etc/pam.d/login only after a newly registered credential passes a real PAM\n"
+    "# authentication.  Failure falls through to login's normal password stack.\n"
+    "auth sufficient pam_u2f.so "
+    "authfile=/etc/security/kythos-u2f-mappings "
+    f"origin={ORIGIN} appid={ORIGIN} cue userpresence=1\n"
+)
+USERNAME_RE = re.compile(r"[a-z_][a-z0-9_-]{0,31}\Z")
+BASE64_RE = re.compile(r"[A-Za-z0-9+/]+={0,2}\Z")
+COSE_TYPES = {"es256", "eddsa", "rs256"}
+VERIFICATION_OPTION = {"pin": "+pin", "uv": "+verification"}
+MAX_FILE_SIZE = 65536
+MAX_DEVICES = 8
+
+
+class FidoLoginError(RuntimeError):
+    """A safe, user-facing enrollment failure."""
+
+
+@dataclass(frozen=True)
+class Layout:
+    mapping: Path = Path("/etc/security/kythos-u2f-mappings")
+    login: Path = Path("/etc/pam.d/login")
+    fragment: Path = Path("/etc/pam.d/kythos-fido2")
+    backup: Path = Path("/etc/pam.d/login.kythos-password-recovery")
+    lock: Path = Path("/run/kythos-fido-login.lock")
+    owner_uid: int = 0
+    owner_gid: int = 0
+
+
+RegistrationRunner = Callable[[list[str]], tuple[int, str]]
+VerificationRunner = Callable[[str, str], bool]
+
+
+def require_root() -> None:
+    if os.geteuid() != 0:
+        raise FidoLoginError("Run this command with sudo or as root.")
+
+
+def validate_username(username: str) -> None:
+    if not USERNAME_RE.fullmatch(username):
+        raise FidoLoginError("Invalid local user name.")
+
+
+def password_hash_is_usable(value: str) -> bool:
+    return bool(value) and not value.startswith(("!", "*"))
+
+
+def uid_minimum(path: Path = Path("/etc/login.defs")) -> int:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return 1000
+    values = re.findall(r"(?m)^\s*UID_MIN\s+(\d+)\s*(?:#.*)?$", text)
+    return int(values[-1]) if values else 1000
+
+
+def shadow_hash(username: str, path: Path = Path("/etc/shadow")) -> str:
+    try:
+        data = path.read_text(encoding="utf-8")
+    except OSError as error:
+        raise FidoLoginError(f"Cannot read the local password database: {error}") from error
+    matches = [line.split(":", 2)[1] for line in data.splitlines()
+               if line.startswith(username + ":") and line.count(":") >= 2]
+    if len(matches) != 1:
+        raise FidoLoginError("The user has no unique local password record.")
+    return matches[0]
+
+
+def validate_enrollment_account(username: str) -> None:
+    validate_username(username)
+    try:
+        account = pwd.getpwnam(username)
+    except KeyError as error:
+        raise FidoLoginError("The requested local user does not exist.") from error
+    if account.pw_uid < uid_minimum() or account.pw_uid == 65534:
+        raise FidoLoginError("FIDO2 enrollment is limited to regular local users.")
+    if account.pw_shell.endswith(("/false", "/nologin")):
+        raise FidoLoginError("The requested user does not have an interactive login shell.")
+    if not password_hash_is_usable(shadow_hash(username)):
+        raise FidoLoginError(
+            "Set and unlock a nonempty recovery password before FIDO2 enrollment."
+        )
+
+
+def reject_live_session() -> None:
+    if Path("/run/live/medium").exists():
+        raise FidoLoginError("Enroll a key after installation, not in the live session.")
+    try:
+        tokens = Path("/proc/cmdline").read_text(encoding="utf-8").split()
+    except OSError:
+        tokens = []
+    if "boot=live" in tokens:
+        raise FidoLoginError("Enroll a key after installation, not in the live session.")
+
+
+def require_enrollment_terminal() -> None:
+    if not sys.stdin.isatty() or not sys.stderr.isatty():
+        raise FidoLoginError("Enrollment requires an interactive local terminal.")
+    try:
+        fd = os.open("/dev/tty", os.O_RDWR | os.O_CLOEXEC)
+    except OSError as error:
+        raise FidoLoginError("Enrollment requires a controlling terminal.") from error
+    else:
+        os.close(fd)
+
+
+def ensure_dependency(path: str) -> None:
+    candidate = Path(path)
+    try:
+        info = candidate.stat()
+    except OSError as error:
+        raise FidoLoginError(f"Required command is unavailable: {path}") from error
+    if (not stat.S_ISREG(info.st_mode) or info.st_uid != 0
+            or info.st_mode & 0o022 or not os.access(candidate, os.X_OK)):
+        raise FidoLoginError(f"Required command is not trusted: {path}")
+
+
+def ensure_secure_file(path: Path, owner_uid: int, *, max_size: int = MAX_FILE_SIZE) -> os.stat_result:
+    try:
+        info = path.lstat()
+    except OSError as error:
+        raise FidoLoginError(f"Required file is unavailable: {path}") from error
+    if not stat.S_ISREG(info.st_mode) or info.st_uid != owner_uid:
+        raise FidoLoginError(f"Refusing unsafe file: {path}")
+    if info.st_mode & 0o022 or info.st_nlink != 1 or info.st_size > max_size:
+        raise FidoLoginError(f"Refusing insecure file metadata: {path}")
+    return info
+
+
+def ensure_secure_directory(path: Path, owner_uid: int) -> os.stat_result:
+    try:
+        info = path.lstat()
+    except OSError as error:
+        raise FidoLoginError(f"Required directory is unavailable: {path}") from error
+    if (not stat.S_ISDIR(info.st_mode) or info.st_uid != owner_uid
+            or info.st_mode & 0o022):
+        raise FidoLoginError(f"Refusing unsafe directory: {path}")
+    return info
+
+
+def read_secure_text(path: Path, owner_uid: int, *, optional: bool = False) -> str | None:
+    if optional and not path.exists():
+        return None
+    ensure_secure_file(path, owner_uid)
+    try:
+        data = path.read_bytes()
+    except OSError as error:
+        raise FidoLoginError(f"Cannot read {path}: {error}") from error
+    if b"\0" in data:
+        raise FidoLoginError(f"Refusing NUL data in {path}")
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise FidoLoginError(f"Refusing non-UTF-8 data in {path}") from error
+
+
+def fsync_directory(directory: Path) -> None:
+    fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def atomic_write(path: Path, text: str, mode: int, layout: Layout) -> None:
+    ensure_secure_directory(path.parent, layout.owner_uid)
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    temporary_path = Path(temporary)
+    try:
+        os.fchmod(fd, mode)
+        if os.geteuid() == 0:
+            os.fchown(fd, layout.owner_uid, layout.owner_gid)
+        with os.fdopen(fd, "w", encoding="utf-8", closefd=True) as stream:
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary_path, path)
+        fsync_directory(path.parent)
+    except BaseException:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        temporary_path.unlink(missing_ok=True)
+        raise
+
+
+def create_backup_once(layout: Layout, login_text: str) -> None:
+    ensure_secure_directory(layout.backup.parent, layout.owner_uid)
+    if layout.backup.exists():
+        backup = read_secure_text(layout.backup, layout.owner_uid)
+        if INCLUDE_LINE in (backup or "") or COMMON_AUTH_LINE not in (backup or "").splitlines():
+            raise FidoLoginError("The password recovery PAM backup is invalid.")
+        return
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd = os.open(layout.backup, flags, 0o600)
+    try:
+        if os.geteuid() == 0:
+            os.fchown(fd, layout.owner_uid, layout.owner_gid)
+        with os.fdopen(fd, "w", encoding="utf-8", closefd=True) as stream:
+            stream.write(login_text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        fsync_directory(layout.backup.parent)
+    except BaseException:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        layout.backup.unlink(missing_ok=True)
+        raise
+
+
+def parse_credential(value: str, verification: str | None = None) -> None:
+    fields = value.split(",")
+    if len(fields) != 4:
+        raise FidoLoginError("pamu2fcfg returned a malformed credential.")
+    handle, public_key, cose_type, options_text = fields
+    if handle != "*" and (not BASE64_RE.fullmatch(handle) or not 8 <= len(handle) <= 2048):
+        raise FidoLoginError("pamu2fcfg returned an invalid key handle.")
+    if not BASE64_RE.fullmatch(public_key) or not 16 <= len(public_key) <= 4096:
+        raise FidoLoginError("pamu2fcfg returned an invalid public key.")
+    if cose_type not in COSE_TYPES:
+        raise FidoLoginError("pamu2fcfg returned an unsupported credential type.")
+    options = re.findall(r"\+[a-z]+", options_text)
+    if "".join(options) != options_text or len(options) != len(set(options)):
+        raise FidoLoginError("pamu2fcfg returned invalid credential options.")
+    if "+presence" not in options:
+        raise FidoLoginError("The credential does not require physical user presence.")
+    secure_options = {"+presence", "+pin", "+verification"}
+    if not set(options) <= secure_options:
+        raise FidoLoginError("The credential contains an unsupported option.")
+    verification_options = set(options) & {"+pin", "+verification"}
+    if len(verification_options) != 1:
+        raise FidoLoginError("The credential must require PIN or built-in verification.")
+    if verification and VERIFICATION_OPTION[verification] not in verification_options:
+        raise FidoLoginError("The credential does not enforce the requested verification mode.")
+
+
+def parse_mapping(text: str, *, registration_user: str | None = None,
+                  verification: str | None = None) -> dict[str, list[str]]:
+    if len(text.encode("utf-8")) > MAX_FILE_SIZE or "\0" in text:
+        raise FidoLoginError("The FIDO2 mapping file is too large or malformed.")
+    result: dict[str, list[str]] = {}
+    for line in text.splitlines():
+        if not line:
+            raise FidoLoginError("Blank lines are not allowed in the FIDO2 mapping file.")
+        username, separator, credentials_text = line.partition(":")
+        validate_username(username)
+        if not separator or username in result:
+            raise FidoLoginError("The FIDO2 mapping contains duplicate or malformed users.")
+        credentials = credentials_text.split(":")
+        if not 1 <= len(credentials) <= MAX_DEVICES:
+            raise FidoLoginError("The FIDO2 mapping has an invalid credential count.")
+        for credential in credentials:
+            parse_credential(
+                credential,
+                verification if registration_user == username else None,
+            )
+        result[username] = credentials
+    if registration_user is not None and set(result) != {registration_user}:
+        raise FidoLoginError("pamu2fcfg returned a mapping for the wrong user.")
+    if registration_user is not None and len(result[registration_user]) != 1:
+        raise FidoLoginError("pamu2fcfg did not return exactly one new credential.")
+    return result
+
+
+def serialize_mapping(mapping: dict[str, list[str]]) -> str:
+    if not mapping:
+        return ""
+    return "".join(f"{username}:{':'.join(credentials)}\n"
+                   for username, credentials in mapping.items())
+
+
+def merge_registration(existing_text: str, registration_text: str,
+                       username: str, verification: str) -> str:
+    current = parse_mapping(existing_text) if existing_text else {}
+    registration = parse_mapping(
+        registration_text, registration_user=username, verification=verification
+    )
+    credential = registration[username][0]
+    credentials = current.setdefault(username, [])
+    if credential in credentials:
+        raise FidoLoginError("This FIDO2 credential is already enrolled.")
+    if len(credentials) >= MAX_DEVICES:
+        raise FidoLoginError(f"At most {MAX_DEVICES} FIDO2 credentials may be enrolled per user.")
+    credentials.append(credential)
+    return serialize_mapping(current)
+
+
+def enable_login_text(text: str) -> str:
+    lines = text.splitlines()
+    marker_positions = [index for index, line in enumerate(lines)
+                        if line.strip() == INCLUDE_LINE]
+    marker_count = len(marker_positions)
+    if any("kythos-fido2" in line and line.strip() != INCLUDE_LINE for line in lines):
+        raise FidoLoginError("Refusing an unexpected KythOS FIDO2 PAM entry.")
+    if marker_count > 1:
+        raise FidoLoginError("The KythOS FIDO2 PAM include is duplicated.")
+    common = [index for index, line in enumerate(lines)
+              if line.strip() == COMMON_AUTH_LINE]
+    if len(common) != 1:
+        raise FidoLoginError("login PAM does not contain one common-auth include.")
+    if marker_count == 1:
+        if marker_positions[0] >= common[0]:
+            raise FidoLoginError("The KythOS FIDO2 include is in an unsafe position.")
+        return text if text.endswith("\n") else text + "\n"
+    lines.insert(common[0], INCLUDE_LINE)
+    return "\n".join(lines) + "\n"
+
+
+def disable_login_text(text: str) -> str:
+    lines = text.splitlines()
+    if any("kythos-fido2" in line and line.strip() != INCLUDE_LINE for line in lines):
+        raise FidoLoginError("Refusing an unexpected KythOS FIDO2 PAM entry.")
+    if sum(line.strip() == INCLUDE_LINE for line in lines) > 1:
+        raise FidoLoginError("The KythOS FIDO2 PAM include is duplicated.")
+    lines = [line for line in lines if line.strip() != INCLUDE_LINE]
+    if sum(line.strip() == COMMON_AUTH_LINE for line in lines) != 1:
+        raise FidoLoginError("login PAM does not retain one common-auth include.")
+    return "\n".join(lines) + "\n"
+
+
+def run_registration(command: list[str]) -> tuple[int, str]:
+    environment = {
+        "HOME": "/root",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
+    }
+    result = subprocess.run(command, text=True, stdout=subprocess.PIPE,
+                            stdin=None, stderr=None, env=environment, check=False)
+    return result.returncode, result.stdout
+
+
+def run_pam_verification(service: str, username: str) -> bool:
+    result = subprocess.run(
+        ["/usr/bin/pamtester", "-I", "tty=/dev/tty", service, username,
+         "authenticate"],
+        stdin=None, stdout=None, stderr=None, check=False,
+        env={"LANG": "C.UTF-8", "LC_ALL": "C.UTF-8",
+             "PATH": "/usr/sbin:/usr/bin:/sbin:/bin"},
+    )
+    return result.returncode == 0
+
+
+def write_temporary(path: Path, text: str, mode: int, layout: Layout) -> None:
+    ensure_secure_directory(path.parent, layout.owner_uid)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC, mode)
+    try:
+        if os.geteuid() == 0:
+            os.fchown(fd, layout.owner_uid, layout.owner_gid)
+        with os.fdopen(fd, "w", encoding="utf-8", closefd=True) as stream:
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        fsync_directory(path.parent)
+    except BaseException:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        path.unlink(missing_ok=True)
+        raise
+
+
+def enroll_transaction(layout: Layout, username: str, verification: str,
+                       registration_runner: RegistrationRunner = run_registration,
+                       verification_runner: VerificationRunner = run_pam_verification) -> None:
+    fragment = read_secure_text(layout.fragment, layout.owner_uid)
+    if fragment != FRAGMENT_TEXT:
+        raise FidoLoginError("The packaged KythOS FIDO2 PAM service was modified.")
+    old_mapping = read_secure_text(layout.mapping, layout.owner_uid, optional=True)
+    old_mapping = old_mapping or ""
+    command = [
+        "/usr/bin/pamu2fcfg", "--username", username,
+        "--origin", ORIGIN, "--appid", ORIGIN,
+        "--pin-verification" if verification == "pin" else "--user-verification",
+    ]
+    print("Register the FIDO2 authenticator now; follow its PIN/verification and touch prompts.")
+    returncode, output = registration_runner(command)
+    if returncode != 0:
+        raise FidoLoginError("FIDO2 registration did not complete; PAM was not changed.")
+    registration_lines = output.splitlines()
+    if len(registration_lines) != 1 or len(output.encode("utf-8")) > 8192:
+        raise FidoLoginError("pamu2fcfg returned unexpected output; PAM was not changed.")
+    registration = parse_mapping(
+        registration_lines[0], registration_user=username, verification=verification
+    )
+    verification_text = serialize_mapping(registration)
+    candidate_text = merge_registration(
+        old_mapping, registration_lines[0], username, verification
+    )
+
+    token = secrets.token_hex(8)
+    candidate = layout.mapping.parent / f".kythos-u2f-candidate-{token}"
+    service_name = f"kythos-fido-verify-{token}"
+    service = layout.fragment.parent / service_name
+    verification_pam = (
+        "auth required pam_u2f.so "
+        f"authfile={candidate} origin={ORIGIN} appid={ORIGIN} "
+        "cue userpresence=1\n"
+    )
+    # The proof map deliberately contains only this registration.  Existing
+    # credentials must not be able to satisfy the activation check.
+    write_temporary(candidate, verification_text, 0o600, layout)
+    try:
+        write_temporary(service, verification_pam, 0o600, layout)
+        print("Authenticate once with the newly registered key to verify it before activation.")
+        if not verification_runner(service_name, username):
+            raise FidoLoginError(
+                "FIDO2 authentication was not verified; PAM and mappings were not changed."
+            )
+    finally:
+        service.unlink(missing_ok=True)
+        candidate.unlink(missing_ok=True)
+
+    login_info = ensure_secure_file(layout.login, layout.owner_uid)
+    login_text = read_secure_text(layout.login, layout.owner_uid) or ""
+    new_login = enable_login_text(login_text)
+    previous_existed = layout.mapping.exists()
+    try:
+        atomic_write(layout.mapping, candidate_text, 0o600, layout)
+        create_backup_once(layout, login_text)
+        atomic_write(layout.login, new_login, stat.S_IMODE(login_info.st_mode), layout)
+    except BaseException:
+        if previous_existed:
+            atomic_write(layout.mapping, old_mapping, 0o600, layout)
+        else:
+            layout.mapping.unlink(missing_ok=True)
+            fsync_directory(layout.mapping.parent)
+        raise
+
+
+def lock_mutations(layout: Layout):
+    ensure_secure_directory(layout.lock.parent, layout.owner_uid)
+    if layout.lock.exists():
+        ensure_secure_file(layout.lock, layout.owner_uid, max_size=0)
+    flags = os.O_RDWR | os.O_CREAT | os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(layout.lock, flags, 0o600)
+    if os.geteuid() == 0:
+        os.fchown(descriptor, layout.owner_uid, layout.owner_gid)
+    info = os.fstat(descriptor)
+    if (not stat.S_ISREG(info.st_mode) or info.st_uid != layout.owner_uid
+            or info.st_mode & 0o077 or info.st_nlink != 1):
+        os.close(descriptor)
+        raise FidoLoginError("Refusing an unsafe enrollment lock file.")
+    fcntl.flock(descriptor, fcntl.LOCK_EX)
+    return os.fdopen(descriptor, "r+")
+
+
+def cmd_enroll(layout: Layout, username: str, verification: str) -> None:
+    require_root()
+    reject_live_session()
+    require_enrollment_terminal()
+    validate_enrollment_account(username)
+    ensure_dependency("/usr/bin/pamu2fcfg")
+    ensure_dependency("/usr/bin/pamtester")
+    with lock_mutations(layout):
+        enroll_transaction(layout, username, verification)
+    print(f"FIDO2 local login verified and enabled for {username}.")
+    print("The existing password remains available as recovery fallback.")
+
+
+def cmd_disable(layout: Layout, username: str) -> None:
+    require_root()
+    validate_username(username)
+    with lock_mutations(layout):
+        text = read_secure_text(layout.mapping, layout.owner_uid, optional=True) or ""
+        mapping = parse_mapping(text) if text else {}
+        if username not in mapping:
+            raise FidoLoginError(f"No FIDO2 local-login mapping exists for {username}.")
+        del mapping[username]
+        atomic_write(layout.mapping, serialize_mapping(mapping), 0o600, layout)
+        if not mapping:
+            login_info = ensure_secure_file(layout.login, layout.owner_uid)
+            login_text = read_secure_text(layout.login, layout.owner_uid) or ""
+            atomic_write(
+                layout.login, disable_login_text(login_text),
+                stat.S_IMODE(login_info.st_mode), layout,
+            )
+    print(f"FIDO2 local login disabled for {username}; password login remains available.")
+
+
+def cmd_recover(layout: Layout) -> None:
+    require_root()
+    with lock_mutations(layout):
+        backup = read_secure_text(layout.backup, layout.owner_uid)
+        if INCLUDE_LINE in (backup or ""):
+            raise FidoLoginError("The recovery PAM backup unexpectedly enables FIDO2.")
+        if sum(line.strip() == COMMON_AUTH_LINE for line in (backup or "").splitlines()) != 1:
+            raise FidoLoginError("The recovery PAM backup lacks the password stack.")
+        atomic_write(layout.login, backup or "", 0o644, layout)
+    print("The original local-login PAM file was restored; password login remains available.")
+
+
+def cmd_status(layout: Layout, username: str | None) -> None:
+    require_root()
+    if username:
+        validate_username(username)
+    text = read_secure_text(layout.mapping, layout.owner_uid, optional=True) or ""
+    mapping = parse_mapping(text) if text else {}
+    login = read_secure_text(layout.login, layout.owner_uid) or ""
+    enabled = sum(line.strip() == INCLUDE_LINE for line in login.splitlines()) == 1
+    print(f"login_include_enabled={'yes' if enabled else 'no'}")
+    print("enrolled_users=" + (",".join(mapping) if mapping else "none"))
+    if username:
+        print(f"user_{username}_enrolled={'yes' if username in mapping else 'no'}")
+
+
+def print_ssh_guide() -> None:
+    print("This helper does not change OpenSSH or generate SSH private keys.")
+    print("For native OpenSSH FIDO support, run one of these as the user on the client:")
+    print("  ssh-keygen -t ed25519-sk -f ~/.ssh/id_ed25519_sk")
+    print("  ssh-keygen -t ecdsa-sk -f ~/.ssh/id_ecdsa_sk")
+    print("Add only the resulting .pub key to the server account's authorized_keys.")
+    print("Keep the account password available for recovery if password SSH is enabled.")
+
+
+def argument_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Opt-in FIDO2 authentication for KythOS local console login."
+    )
+    commands = parser.add_subparsers(dest="command", required=True)
+    enroll = commands.add_parser("enroll", help="register and verify a real FIDO2 key")
+    enroll.add_argument("user")
+    enroll.add_argument(
+        "--verification", choices=("pin", "uv"), default="pin",
+        help="PIN (default) or authenticator built-in verification such as biometrics",
+    )
+    disable = commands.add_parser("disable", help="remove one user's local-login mapping")
+    disable.add_argument("user")
+    status_parser = commands.add_parser("status", help="show enrollment state, never key data")
+    status_parser.add_argument("user", nargs="?")
+    commands.add_parser("recover", help="restore the pre-FIDO local-login PAM backup")
+    commands.add_parser("ssh-guide", help="show native OpenSSH FIDO key instructions")
+    return parser
+
+
+def main() -> int:
+    arguments = argument_parser().parse_args()
+    layout = Layout()
+    try:
+        if arguments.command == "enroll":
+            cmd_enroll(layout, arguments.user, arguments.verification)
+        elif arguments.command == "disable":
+            cmd_disable(layout, arguments.user)
+        elif arguments.command == "status":
+            cmd_status(layout, arguments.user)
+        elif arguments.command == "recover":
+            cmd_recover(layout)
+        elif arguments.command == "ssh-guide":
+            print_ssh_guide()
+    except (FidoLoginError, OSError, subprocess.SubprocessError) as error:
+        print(f"kythos-fido-login: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

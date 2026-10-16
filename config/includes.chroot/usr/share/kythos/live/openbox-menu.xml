@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<openbox_menu xmlns="http://openbox.org/3.4/menu">
+  <menu id="root-menu" label="KythOS Kernal">
+    <item label="KythOS Kernal Setup"><action name="Execute"><command>/usr/local/bin/kythos-setup</command></action></item>
+    <item label="Install KythOS Kernal directly"><action name="Execute"><command>/usr/local/bin/kythos-install</command></action></item>
+    <separator/>
+    <item label="Terminal"><action name="Execute"><command>/usr/bin/x-terminal-emulator</command></action></item>
+    <item label="Leave graphical session"><action name="Exit"><prompt>yes</prompt></action></item>
+  </menu>
+</openbox_menu>

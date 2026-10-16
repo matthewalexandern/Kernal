@@ -1,0 +1,24 @@
+# Installation interface only. The built removal manifest includes its
+# dependency closure, while protecting the common installed system.
+calamares
+python3-pyqt6
+python3-yaml
+xserver-xorg-core
+xserver-xorg-input-libinput
+xserver-xorg-video-all
+xinit
+xauth
+x11-xserver-utils
+openbox
+xterm
+dbus-x11
+ckbcomp
+rsync
+squashfs-tools
+fonts-dejavu-core
+qml6-module-qtquick
+qml6-module-qtquick-controls
+qml6-module-qtquick-layouts
+qml6-module-qtquick-window
+qml6-module-qtqml-workerscript
+qml6-module-qtquick-templates

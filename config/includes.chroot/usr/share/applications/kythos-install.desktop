@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Install KythOS Kernal
+Comment=Open the KythOS Kernal installer directly
+Exec=/usr/local/bin/kythos-install
+Icon=/usr/share/plymouth/themes/kythos/kythos-logo.png
+Terminal=false
+Categories=System;
+StartupNotify=true
