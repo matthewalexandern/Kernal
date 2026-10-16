@@ -74,6 +74,14 @@ virtual 64 GiB disk does not create physical capacity. Build architectures
 sequentially when needed, verify copied artifacts before reclaiming only owned
 temporary build directories, and retain both completed artifact sets.
 
+For a constrained sparse guest, `KYTHOS_ARTIFACT_MODE=hardlink` retains completed
+outputs as hardlinks within the same filesystem after all ISO/source audits.
+The default remains independent copies. Hardlink mode is recorded in build
+provenance, refuses existing artifact names, and does not support destinations on
+another filesystem. Treat both names as immutable. Export the artifact set over
+SSH and independently verify its complete checksum manifest before reclaiming
+owned build inputs. Removing an input name preserves the retained artifact.
+
 `scripts/build.sh` creates fresh root-only directories below
 `/var/lib/kythos-builder/builds/` and copies completed outputs below
 `/var/lib/kythos-builder/artifacts/`. A clean Git checkout uses its commit

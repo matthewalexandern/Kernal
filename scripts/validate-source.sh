@@ -105,6 +105,7 @@ programs.append(root / 'config/includes.chroot/usr/local/libexec/kythos-kernel-c
 programs.append(root / 'config/includes.chroot/usr/local/libexec/kythos-architecture')
 programs.append(root / 'scripts/check-multiarch-pair.py')
 programs.append(root / 'scripts/stage-edition.py')
+programs.append(root / 'scripts/retain-build-output.py')
 programs.append(root / 'config/includes.chroot/usr/local/libexec/kythos-edition')
 programs += sorted((root / 'config/includes.chroot/usr/local/libexec').glob('kythos-calamares-*'))
 programs += sorted((root / 'config/includes.chroot/etc/calamares/modules').glob('kythos-*/*.py'))
@@ -120,7 +121,7 @@ if test -z "${KYTHOS_TEST_MAN_ROOT:-}" \
     && test -f /usr/share/man/man1/git.1.gz; then
     export KYTHOS_TEST_MAN_ROOT=/usr/share/man
 fi
-for installer_test in test-installer-removal-plan.py test-calamares-core.py test-setup-wizard.py test-fido2-login.py test-hardware-status.py test-cy-help.py test-network-defaults.py test-command-suggest.py test-command-index.py test-command-suggestions-bash.py test-console-header.py test-kernel-console.py test-ssh-setup.py test-command-assistant.py test-terminal-experience.py test-device-support.py test-editions.py test-boot-artwork.py; do
+for installer_test in test-installer-removal-plan.py test-calamares-core.py test-setup-wizard.py test-fido2-login.py test-hardware-status.py test-cy-help.py test-network-defaults.py test-command-suggest.py test-command-index.py test-command-suggestions-bash.py test-console-header.py test-kernel-console.py test-ssh-setup.py test-command-assistant.py test-terminal-experience.py test-device-support.py test-editions.py test-boot-artwork.py test-build-output.py; do
     PYTHONDONTWRITEBYTECODE=1 python3 "$repo_root/tests/$installer_test" \
         || fail "installer test failed: $installer_test"
 done
