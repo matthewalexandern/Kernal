@@ -3,6 +3,9 @@
 The Ubuntu and Mac workspaces use separate clones of the private
 `matthewalexandern/Kernal` repository. GitHub is the shared source history.
 See [the source synchronization workflow](docs/SOURCE-SYNC.md).
+For the actual private draft ISO delivery and continuation on another device,
+start with [the cloud handoff](docs/CLOUD-CONTINUATION.md). Verify delivery
+completion and checksums before using its assets.
 
 ## Noreply history migration
 

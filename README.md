@@ -156,6 +156,7 @@ packages require the recipient to accept separate license terms.
 - [Console appearance](docs/CONSOLE.md)
 - [Building and testing](docs/BUILDING.md)
 - [Shared source on Ubuntu and Mac](docs/SOURCE-SYNC.md)
+- [Cloud and different-device continuation](docs/CLOUD-CONTINUATION.md)
 - [Identity and retained upstream references](docs/BRANDING.md)
 - [Release checklist](docs/RELEASE-CHECKLIST.md)
 - [Security reporting](SECURITY.md)
