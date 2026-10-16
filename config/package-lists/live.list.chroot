@@ -1,0 +1,3 @@
+# Intentionally tracked to prevent live-build from generating its own list.
+# Live-only packages belong in live.list.chroot_live so live-installer records
+# and removes them from the installed system deterministically.

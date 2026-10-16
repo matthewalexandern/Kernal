@@ -1,0 +1,22 @@
+#!/bin/sh
+set -u
+
+printf '%s\n' 'KythOS Kernal security status'
+if test -r /usr/share/kythos/version; then
+    printf '%-28s %s\n' 'version' "$(cat /usr/share/kythos/version)"
+fi
+printf 'kernel: '
+uname -r
+
+if command -v mokutil >/dev/null 2>&1; then
+    mokutil --sb-state 2>/dev/null || printf '%s\n' 'Secure Boot state unavailable'
+fi
+
+for unit in apparmor.service auditd.service nftables.service apt-daily-upgrade.timer; do
+    unit_state=$(systemctl is-enabled "$unit" 2>/dev/null) || unit_state=disabled
+    printf '%-28s %s\n' "$unit" "$unit_state"
+done
+
+printf '%-28s %s\n' 'AppArmor' "$(aa-enabled --quiet 2>/dev/null && printf enabled || printf unavailable)"
+printf '%-28s %s\n' 'KythOS nftables table' "$(nft list table inet kythos_filter >/dev/null 2>&1 && printf loaded || printf unavailable)"
+printf '%-28s %s\n' 'automatic upgrades' "$(apt-config dump 2>/dev/null | grep -q 'APT::Periodic::Unattended-Upgrade "1"' && printf enabled || printf disabled)"

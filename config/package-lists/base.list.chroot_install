@@ -1,0 +1,14 @@
+# Debian stock kernel and complete packaged module set.
+linux-image-amd64
+
+# Common command-line system functionality for every edition.
+systemd-sysv
+systemd-timesyncd
+sudo
+locales
+ca-certificates
+network-manager
+iproute2
+iputils-ping
+pciutils
+usbutils

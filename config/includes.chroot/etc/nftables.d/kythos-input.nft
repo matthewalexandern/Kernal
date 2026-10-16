@@ -1,0 +1,2 @@
+# KythOS editions place explicit inbound accept rules in this file.
+# The common base intentionally exposes no network service.

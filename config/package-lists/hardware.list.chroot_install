@@ -1,0 +1,40 @@
+# CPU security updates for both amd64 vendor families.
+amd64-microcode
+intel-microcode
+
+# Broad firmware coverage. The live-build firmware switches also discover
+# additional firmware packages exposed by Debian's kernel metadata.
+firmware-linux
+firmware-amd-graphics
+firmware-intel-graphics
+firmware-intel-misc
+firmware-iwlwifi
+firmware-atheros
+firmware-brcm80211
+firmware-realtek
+firmware-mediatek
+firmware-nvidia-graphics
+firmware-sof-signed
+firmware-bnx2
+firmware-bnx2x
+firmware-qlogic
+firmware-misc-nonfree
+
+# Local hardware discovery, firmware updates, and removable devices.
+bluez
+rfkill
+fwupd
+fwupd-amd64-signed
+mokutil
+
+# Common storage, encryption, RAID, and filesystem support.
+cryptsetup-initramfs
+lvm2
+mdadm
+btrfs-progs
+xfsprogs
+exfatprogs
+ntfs-3g
+dosfstools
+smartmontools
+nvme-cli

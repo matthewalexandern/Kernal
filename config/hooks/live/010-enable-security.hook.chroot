@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+umask 022
+
+install -d -m 0755 /var/log/journal
+nft --check --file /etc/nftables.conf
+
+systemctl enable apparmor.service
+systemctl enable auditd.service
+systemctl enable nftables.service
+systemctl enable systemd-timesyncd.service
+systemctl enable apt-daily.timer
+systemctl enable apt-daily-upgrade.timer
+systemctl enable fstrim.timer

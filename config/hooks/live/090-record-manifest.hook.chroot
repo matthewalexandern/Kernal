@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+umask 022
+
+install -d -m 0755 /usr/share/kythos
+dpkg-query -W -f='${binary:Package}\t${Version}\t${Architecture}\n' \
+    | LC_ALL=C sort > /usr/share/kythos/live-package-manifest.tsv
+sha256sum /usr/share/kythos/live-package-manifest.tsv \
+    > /usr/share/kythos/live-package-manifest.tsv.sha256

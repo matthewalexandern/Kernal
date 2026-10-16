@@ -1,0 +1,4 @@
+# The live installer removes these from the installed base.
+live-boot
+live-config
+live-config-systemd

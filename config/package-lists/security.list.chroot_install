@@ -1,0 +1,12 @@
+# Mandatory access control and auditing. Application packages can add their
+# own AppArmor profiles without changing the common base.
+apparmor
+apparmor-utils
+auditd
+
+# Host firewall and automatic Debian security maintenance.
+nftables
+unattended-upgrades
+debian-security-support
+needrestart
+debsums

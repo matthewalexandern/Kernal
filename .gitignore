@@ -1,0 +1,23 @@
+# live-build output, generated state, caches, and logs.
+/.build/
+/artifacts/
+/binary/
+/binary.*
+/cache/
+/chroot/
+/chroot.*
+/config/binary
+/config/bootstrap
+/config/chroot
+/config/common
+/config/source
+/*.iso
+/*.img
+/*.log
+/*.buildinfo
+/*.contents
+/*.packages
+/*.zsync
+/*.files
+/source/
+/source.*

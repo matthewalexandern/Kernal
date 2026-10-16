@@ -1,0 +1,13 @@
+-w /etc/passwd -p wa -k identity
+-w /etc/group -p wa -k identity
+-w /etc/shadow -p wa -k identity
+-w /etc/gshadow -p wa -k identity
+-w /etc/sudoers -p wa -k privilege
+-w /etc/sudoers.d/ -p wa -k privilege
+-w /etc/apt/ -p wa -k software_sources
+-w /etc/apparmor.d/ -p wa -k mac_policy
+-w /etc/audit/ -p wa -k audit_config
+-w /etc/nftables.conf -p wa -k firewall
+-w /etc/systemd/system/ -p wa -k system_services
+-w /etc/modprobe.d/ -p wa -k kernel_modules
+-w /boot/ -p wa -k boot_files
