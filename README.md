@@ -155,6 +155,7 @@ packages require the recipient to accept separate license terms.
 - [Command suggestions](docs/COMMAND-SUGGESTIONS.md)
 - [Console appearance](docs/CONSOLE.md)
 - [Building and testing](docs/BUILDING.md)
+- [Shared source on Ubuntu and Mac](docs/SOURCE-SYNC.md)
 - [Identity and retained upstream references](docs/BRANDING.md)
 - [Release checklist](docs/RELEASE-CHECKLIST.md)
 - [Security reporting](SECURITY.md)

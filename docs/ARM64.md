@@ -1,8 +1,9 @@
 # ARM64 build and validation
 
-ARM64 support is experimental. Package availability and recipe selection are
-verified; an ARM64 image build, boot, installation and Parallels acceptance
-remain required before compatibility can be declared.
+ARM64 support is experimental. The [cc472f5 build records](builds/2026-10-16-cc472f5/README.md)
+confirm a completed ARM64 image build, source coverage and transfer integrity.
+ARM64 boot, installation, Secure Boot, Parallels and physical hardware remain
+untested; compatibility is not yet established.
 
 The ARM64 pipeline uses this repository and the same source commit as amd64.
 It selects the `arm64` profile in
@@ -28,8 +29,14 @@ authenticated `deb` and `deb-src` snapshot sources from `SNAPSHOT`, install
 source commit. Then run:
 
 ```sh
-sudo ./scripts/build-arm64.sh
+sudo env LC_ALL=C.UTF-8 LANG=C.UTF-8 ./scripts/build-arm64.sh
 ```
+
+Use the same explicit locale variables in a systemd build service and verify
+the child process environment. The source audits compare tables sorted under
+the C locale; the neutral locale prevents a different inherited collation
+order from invalidating those comparisons. This selects the builder process
+locale and does not change the installed system's locale.
 
 The ordinary build script runs every source, native partition, image and
 binary/source closure gate. It records the Debian architecture, selected
