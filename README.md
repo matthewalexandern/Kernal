@@ -53,6 +53,8 @@ required before that image can be described as supported.
 - A fixed local-console header and matching hostname color, with the command
   area sized separately so terminal applications retain their controls.
 - Regular, nonbold console styling with the original text-console font.
+- Kernel diagnostics on a dedicated text console, keeping driver errors
+  available without scrolling the login terminal's header.
 - No installed desktop, hypervisor, AI runtime, proprietary NVIDIA driver, or
   custom kernel in the common base. The installation interface is removed
   from installed targets.

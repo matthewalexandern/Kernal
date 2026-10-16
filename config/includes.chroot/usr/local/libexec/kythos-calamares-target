@@ -403,7 +403,7 @@ def prepare(data):
     command(["/usr/bin/systemctl", "set-default", "multi-user.target"])
     for unit in ("NetworkManager.service", "apparmor.service", "auditd.service", "nftables.service",
                  "ssh.service", "systemd-timesyncd.service", "apt-daily.timer", "apt-daily-upgrade.timer",
-                 "fstrim.timer", "kythos-aide-initialize.timer", "dailyaidecheck.timer"):
+                 "fstrim.timer", "kythos-kernel-console.service", "kythos-aide-initialize.timer", "dailyaidecheck.timer"):
         command(["/usr/bin/systemctl", "enable", unit])
     # A loopback DHCP lease is not a durable installed-system resolver.
     resolv = Path("/etc/resolv.conf")

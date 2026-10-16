@@ -227,13 +227,12 @@ class BashSuggestionTests(unittest.TestCase):
         shell = self.shell()
         for name in ('ambiguous-one', 'ambiguous-two'):
             (shell.directory / name).touch()
-        shell.send('cat ambiguous-\t')
-        shell.read(0.1)
-        shell.send('\t')
-        output = shell.read(0.3)
+        shell.send('cat ambiguous-\t\t')
+        output = shell.wait_for(b'ambiguous-two')
         self.assertIn(b'ambiguous-one', output)
         self.assertIn(b'ambiguous-two', output)
         self.assertEqual(shell.state()[0], 'cat ambiguous-')
+        self.assertEqual(shell.executions(), [])
 
     def test_incomplete_target_is_feedback_only(self):
         shell = self.shell()

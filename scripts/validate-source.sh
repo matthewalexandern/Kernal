@@ -96,6 +96,7 @@ programs = [root / 'config/includes.chroot/usr/local/bin' / name
 programs.append(root / 'config/includes.chroot/usr/local/sbin/kythos-fido-login')
 programs.append(root / 'config/includes.chroot/usr/local/libexec/kythos-command-suggest')
 programs.append(root / 'config/includes.chroot/usr/local/libexec/kythos-console-session')
+programs.append(root / 'config/includes.chroot/usr/local/libexec/kythos-kernel-console')
 programs.append(root / 'config/includes.chroot/usr/local/libexec/kythos-architecture')
 programs.append(root / 'scripts/check-multiarch-pair.py')
 programs += sorted((root / 'config/includes.chroot/usr/local/libexec').glob('kythos-calamares-*'))
@@ -106,10 +107,14 @@ for config in (root / 'config/includes.chroot/etc/calamares').rglob('*'):
     if config.suffix in ('.conf', '.desc') and not isinstance(yaml.safe_load(config.read_text()), dict):
         raise ValueError('Expected installer configuration map: ' + str(config))
 PY
-for installer_test in test-installer-removal-plan.py test-calamares-core.py test-setup-wizard.py test-fido2-login.py test-hardware-status.py test-cy-help.py test-network-defaults.py test-command-suggest.py test-command-index.py test-command-suggestions-bash.py test-console-header.py; do
+for installer_test in test-installer-removal-plan.py test-calamares-core.py test-setup-wizard.py test-fido2-login.py test-hardware-status.py test-cy-help.py test-network-defaults.py test-command-suggest.py test-command-index.py test-command-suggestions-bash.py test-console-header.py test-kernel-console.py; do
     PYTHONDONTWRITEBYTECODE=1 python3 "$repo_root/tests/$installer_test" \
         || fail "installer test failed: $installer_test"
 done
+check_contains "$repo_root/config/hooks/live/027-console-header.hook.chroot" \
+    'systemctl enable kythos-kernel-console.service'
+check_contains "$repo_root/config/includes.chroot/usr/lib/systemd/system/kythos-kernel-console.service" \
+    'Before=getty-pre.target getty@tty1.service getty.target'
 check_contains "$repo_root/auto/config" 'components live-config.nocomponents=sudo,xinit'
 check_contains "$repo_root/config/bootloaders/grub-pc/grub.cfg" 'Install KythOS Kernal (Calamares)'
 check_contains "$repo_root/config/bootloaders/grub-pc/grub.cfg" 'Advanced graphical installer'

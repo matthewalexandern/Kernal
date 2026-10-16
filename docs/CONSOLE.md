@@ -49,3 +49,38 @@ Linux virtual consoles have a limited palette. The wrapper applies the
 per-console normal-blue theme entry `#9eafff`; it persists until that console's
 palette is reset. Other consoles, global palette defaults and other palette
 entries are not modified. `KYTHOS_CONSOLE_COLOR=0` disables that theme update.
+
+## Kernel diagnostics
+
+Kernel messages can write directly to a Linux virtual console, bypassing the
+terminal viewport. For example, an error during USB driver probing can scroll
+the whole physical display. On an installed boot,
+`kythos-kernel-console.service` routes these messages to the unused `tty12`
+before the first console login. This keeps the header and terminal programs
+intact without lowering the kernel log level or discarding diagnostics.
+
+Use **Alt+F12** from a text console to view these messages, and **Alt+F1** to
+return to the first login console. `sudo journalctl -k` and `sudo dmesg` remain
+available. Serial console output is unchanged. Live installer sessions retain
+their normal console routing.
+
+The service respects an existing kernel message redirect, configured `tty12`
+getty or boot console, and an already occupied `tty12`. Administrators assigning
+that VT to another custom service should disable this service first. It runs
+once with restricted devices; no monitoring daemon or periodic repaint runs.
+
+To restore foreground kernel messages and keep that choice on later boots:
+
+```sh
+sudo systemctl disable --now kythos-kernel-console.service
+sudo /usr/local/libexec/kythos-kernel-console --restore
+```
+
+The explicit restore returns to foreground routing only while the
+service still owns its redirect. A later redirect to a different console is
+preserved. The kernel does not provide an atomic compare-and-swap for this
+setting, so configure competing routing services to run after this one.
+The diagnostic console's existing text remains available until reboot.
+Stopping or restarting the oneshot service alone does not change its routing
+or discard ownership. Restoring deliberately releases that ownership; an
+occupied diagnostic VT is left intact rather than cleared for reuse.

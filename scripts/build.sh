@@ -253,6 +253,8 @@ required_source_recipe_files=(
     config/hooks/live/027-console-header.hook.chroot
     config/includes.chroot/etc/profile.d/55-kythos-console.sh
     config/includes.chroot/usr/local/libexec/kythos-console-session
+    config/includes.chroot/usr/local/libexec/kythos-kernel-console
+    config/includes.chroot/usr/lib/systemd/system/kythos-kernel-console.service
     config/includes.chroot/usr/local/bin/kythos-console
     config/includes.chroot/usr/share/kythos/console-tmux.conf
     config/includes.chroot/etc/profile.d/60-kythos-suggestions.sh
@@ -277,6 +279,7 @@ required_source_recipe_files=(
     tests/test-command-index.py
     tests/test-command-suggestions-bash.py
     tests/test-console-header.py
+    tests/test-kernel-console.py
     tests/calamares-storage-policy.cpp
 )
 for required_source_recipe_file in "${required_source_recipe_files[@]}"

@@ -1,0 +1,226 @@
+#!/usr/bin/python3 -I
+"""Keep kernel messages on a dedicated unused VT without suppressing logging."""
+
+from array import array
+from contextlib import contextmanager
+import fcntl
+import json
+import os
+from pathlib import Path
+import stat
+import sys
+import tempfile
+
+
+TIOCLINUX = 0x541C
+VT_GETSTATE = 0x5603
+GET_REDIRECT = 17
+SET_REDIRECT = 11
+TARGET_VT = 12
+STATE_DIR = Path('/run/kythos-kernel-console')
+CMDLINE = Path('/proc/cmdline')
+BOOT_ID = Path('/proc/sys/kernel/random/boot_id')
+LIVE_MEDIUM = Path('/run/live/medium')
+SYSTEMD_ROOTS = (Path('/etc/systemd/system'), Path('/run/systemd/system'))
+INTRO = (b'KythOS Kernal - kernel messages\n'
+         b'Kernel errors remain enabled. Return to the main console with Ctrl+Alt+F1.\n'
+         b'Inspect stored messages with: sudo journalctl -k -b\n\n')
+
+
+@contextmanager
+def console_device(number):
+    """Open exactly the root-owned Linux VT character device, never a symlink."""
+    descriptor = os.open('/dev/tty' + str(number), os.O_RDWR | os.O_NOFOLLOW |
+                         os.O_NOCTTY | os.O_CLOEXEC)
+    try:
+        info = os.fstat(descriptor)
+        if (not stat.S_ISCHR(info.st_mode) or info.st_uid != 0 or
+                os.major(info.st_rdev) != 4 or os.minor(info.st_rdev) != number):
+            raise ValueError('unexpected console device')
+        yield descriptor
+    finally:
+        os.close(descriptor)
+
+
+def get_redirect(descriptor):
+    argument = bytearray([GET_REDIRECT])
+    fcntl.ioctl(descriptor, TIOCLINUX, argument, True)
+    value = argument[0]
+    if not 0 <= value <= 63:
+        raise ValueError('invalid kernel console redirect')
+    return value
+
+
+def set_redirect(descriptor, number):
+    # The setter returns zero, not the previous redirect. There is no kernel
+    # compare-and-swap operation; early boot ordering bounds concurrent changes.
+    fcntl.ioctl(descriptor, TIOCLINUX, bytearray([SET_REDIRECT, number]), True)
+
+
+def target_allocated(descriptor):
+    state = array('H', [0, 0, 0])
+    fcntl.ioctl(descriptor, VT_GETSTATE, state, True)
+    return bool(state[2] & (1 << TARGET_VT))
+
+
+def write_intro(descriptor):
+    remaining = memoryview(INTRO)
+    while remaining:
+        written = os.write(descriptor, remaining)
+        if written <= 0:
+            raise OSError('could not write kernel console introduction')
+        remaining = remaining[written:]
+
+
+def boot_context():
+    return CMDLINE.read_text().split(), BOOT_ID.read_text().strip()
+
+
+def reserved_target(cmdline):
+    if any(word.partition('=')[0] == 'console' and
+           word.partition('=')[2].partition(',')[0] == 'tty12' for word in cmdline):
+        return True
+    # Respect explicit getty configuration even before it allocates its VT.
+    for root in SYSTEMD_ROOTS:
+        if not root.exists():
+            continue
+        for name in ('getty@tty12.service', 'autovt@tty12.service'):
+            if any(root.rglob(name)):
+                return True
+    return False
+
+
+@contextmanager
+def state_lock():
+    STATE_DIR.mkdir(mode=0o700, parents=False, exist_ok=True)
+    info = STATE_DIR.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o077:
+        raise ValueError('kernel console state directory is not private root storage')
+    descriptor = os.open(STATE_DIR / 'lock', os.O_CREAT | os.O_RDWR |
+                         os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, 0o600)
+    try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or stat.S_IMODE(info.st_mode) != 0o600:
+            raise ValueError('kernel console lock is not private root storage')
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        yield
+    finally:
+        os.close(descriptor)
+
+
+def read_state(boot_id):
+    try:
+        descriptor = os.open(STATE_DIR / 'state.json', os.O_RDONLY | os.O_NOFOLLOW |
+                             os.O_NONBLOCK | os.O_CLOEXEC)
+    except FileNotFoundError:
+        return None
+    with os.fdopen(descriptor, 'rb') as source:
+        info = os.fstat(source.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or stat.S_IMODE(info.st_mode) != 0o600:
+            raise ValueError('kernel console ownership state is not private root storage')
+        raw = source.read(4097)
+    if len(raw) > 4096:
+        raise ValueError('kernel console ownership state exceeds its bound')
+    expected = {'schema_version': 1, 'boot_id': boot_id, 'previous_redirect': 0,
+                'redirect': TARGET_VT}
+    if json.loads(raw) != expected:
+        raise ValueError('kernel console ownership state is invalid for this boot')
+    return expected
+
+
+def write_state(boot_id):
+    value = {'schema_version': 1, 'boot_id': boot_id, 'previous_redirect': 0,
+             'redirect': TARGET_VT}
+    descriptor, name = tempfile.mkstemp(prefix='.state-', dir=STATE_DIR)
+    try:
+        with os.fdopen(descriptor, 'w') as destination:
+            json.dump(value, destination, sort_keys=True)
+            destination.write('\n')
+            destination.flush()
+            os.fsync(destination.fileno())
+        os.replace(name, STATE_DIR / 'state.json')
+    finally:
+        if os.path.exists(name):
+            os.unlink(name)
+
+
+def result(status, redirect=None):
+    value = {'status': status}
+    if redirect is not None:
+        value['redirect'] = redirect
+    return value
+
+
+def run(action):
+    if os.geteuid() != 0:
+        raise ValueError('kernel console routing requires root')
+    cmdline, boot_id = boot_context()
+    if action == 'apply' and (LIVE_MEDIUM.is_dir() or 'boot=live' in cmdline):
+        return result('skipped-live')
+    with state_lock(), console_device(0) as control:
+        owned = read_state(boot_id)
+        current = get_redirect(control)
+        if action == 'status':
+            return result('owned' if owned and current == TARGET_VT else 'unowned', current)
+        if action == 'restore':
+            if owned is None:
+                return result('skipped-unowned', current)
+            if current != TARGET_VT:
+                (STATE_DIR / 'state.json').unlink()
+                return result('preserved-administrator-redirect', current)
+            set_redirect(control, 0)
+            after = get_redirect(control)
+            if after != 0:
+                return result('preserved-concurrent-redirect', after)
+            (STATE_DIR / 'state.json').unlink()
+            return result('restored', 0)
+        if current:
+            return result('already-owned' if owned and current == TARGET_VT else
+                          'skipped-existing-redirect', current)
+        if owned is not None:
+            # An administrator reset routing since our earlier successful run.
+            # Do not immediately override that choice by applying again.
+            return result('preserved-administrator-redirect', current)
+        if reserved_target(cmdline):
+            return result('skipped-configured-tty12', current)
+        if target_allocated(control):
+            return result('skipped-allocated-tty12', current)
+        with console_device(TARGET_VT) as target:
+            write_intro(target)
+            # Recheck after allocation. Never replace an existing nonzero route.
+            current = get_redirect(control)
+            if current:
+                return result('preserved-concurrent-redirect', current)
+            # Persist ownership first, so a crash immediately after the ioctl
+            # still leaves enough state for an explicit conditional restore.
+            write_state(boot_id)
+            try:
+                set_redirect(control, TARGET_VT)
+            except OSError:
+                if get_redirect(control) == 0:
+                    (STATE_DIR / 'state.json').unlink()
+                raise
+            after = get_redirect(control)
+            if after != TARGET_VT:
+                (STATE_DIR / 'state.json').unlink()
+                return result('preserved-concurrent-redirect', after)
+            return result('redirected', TARGET_VT)
+
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    actions = {(): 'apply', ('--apply',): 'apply', ('--restore',): 'restore', ('--status',): 'status'}
+    action = actions.get(tuple(argv))
+    if action is None:
+        print('Usage: kythos-kernel-console [--apply | --restore | --status]', file=sys.stderr)
+        return 2
+    try:
+        print(json.dumps(run(action), sort_keys=True))
+        return 0
+    except (OSError, ValueError, RuntimeError) as exc:
+        print('KythOS kernel console: ' + str(exc), file=sys.stderr)
+        return 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

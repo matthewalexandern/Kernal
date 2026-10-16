@@ -1,0 +1,34 @@
+[Unit]
+Description=Keep kernel diagnostics on a dedicated text console
+After=console-setup.service systemd-vconsole-setup.service
+Wants=getty-pre.target
+Before=getty-pre.target getty@tty1.service getty.target
+ConditionPathExists=/dev/tty0
+ConditionPathExists=!/run/live/medium
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/kythos-kernel-console
+RemainAfterExit=yes
+RuntimeDirectory=kythos-kernel-console
+RuntimeDirectoryMode=0700
+# Keep ownership available for an explicit restore, including after unit stop.
+RuntimeDirectoryPreserve=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=CAP_SYS_ADMIN
+DevicePolicy=closed
+DeviceAllow=/dev/tty0 rw
+DeviceAllow=/dev/tty12 rw
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+PrivateTmp=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

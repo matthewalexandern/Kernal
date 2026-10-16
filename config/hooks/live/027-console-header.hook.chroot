@@ -6,9 +6,14 @@ profile=/etc/profile.d/55-kythos-console.sh
 test -f "$profile"
 test -x /usr/local/libexec/kythos-console-session
 test -x /usr/local/bin/kythos-console
+test -x /usr/local/libexec/kythos-kernel-console
 test -f /usr/share/kythos/console-tmux.conf
+test -f /usr/lib/systemd/system/kythos-kernel-console.service
 /bin/bash -n "$profile"
 /usr/bin/infocmp tmux-256color > /dev/null
+# Installed boots route VT kernel diagnostics before login. Never change the
+# builder's or live installer's active consoles from this chroot hook.
+systemctl enable kythos-kernel-console.service
 
 for target in /etc/bash.bashrc /etc/skel/.bashrc /root/.bashrc; do
     if ! grep -Fxq '# BEGIN KythOS console defaults' "$target"; then
