@@ -55,3 +55,34 @@ cat /etc/resolv.conf
 Settings follow the packaged NetworkManager 1.52.1 documentation:
 [connection properties](https://manpages.debian.org/trixie/network-manager/nm-settings-nmcli.5.en.html)
 and [keyfile format](https://manpages.debian.org/trixie/network-manager/nm-settings-keyfile.5.en.html).
+
+## Remote access acceptance
+
+The installed base permits TCP port 22 in its default-drop firewall and enables
+`ssh.service`; the temporary live installer does not serve SSH. See the
+[SSH lifecycle and key workflow](ENCRYPTION-SSH-CY.md#ssh-access-after-installation).
+For each architecture and affected edition, validate a fresh installation:
+
+1. Select an ordinary account with a nonempty password. Boot the installed
+   system without manually enabling services. Confirm `systemctl is-enabled
+   ssh.service` returns `enabled` and `systemctl is-active ssh.service` returns
+   `active`. Run `sudo kythos-security-status` and inspect any failures.
+2. Record its real IPv4/IPv6 address and host-key fingerprint from the console.
+   From a second machine on a reachable network, connect with
+   `ssh USER@ADDRESS`, verify the fingerprint, and authenticate with the
+   installer-created password. Confirm `id` identifies that ordinary account.
+   Repeat using a public key installed with `kythos-ssh install -i KEY.pub`.
+3. Confirm root password/key login and empty-password login fail. Verify RSA
+   user keys negotiate RSA SHA-2; do not add `+ssh-rsa` compatibility options.
+4. Reboot and repeat the remote connection. The host fingerprint must remain
+   stable across reboots. Install a second disposable VM from the same ISO and
+   confirm its host-key fingerprint differs from the first installation.
+5. On a running installed VM, deliberately stop SSH, run
+   `sudo kythos-enable-ssh`, and confirm it is immediately reachable and remains
+   enabled for the next boot. Check host and VM NAT/bridging/firewall settings
+   separately if the guest's listener is reachable only inside the VM.
+
+The source test's isolated localhost connection validates OpenSSH RSA SHA-2
+behavior, not external network reachability, kernel firewall application, or
+the installed-account/PAM path. Do not mark these acceptance checks complete
+without the separate-machine and fresh-install evidence.

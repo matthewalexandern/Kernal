@@ -45,11 +45,11 @@ usermod --lock root
 install -d -m 0755 /run/sshd
 /usr/bin/ssh-keygen -A
 /usr/sbin/sshd -t
-rm -f /etc/ssh/ssh_host_dsa_key /etc/ssh/ssh_host_dsa_key.pub \
-    /etc/ssh/ssh_host_ecdsa_key /etc/ssh/ssh_host_ecdsa_key.pub \
-    /etc/ssh/ssh_host_ed25519_key /etc/ssh/ssh_host_ed25519_key.pub \
-    /etc/ssh/ssh_host_rsa_key /etc/ssh/ssh_host_rsa_key.pub
+for key in /etc/ssh/ssh_host_*_key*; do
+    if test -f "$key" || test -L "$key"; then
+        rm -f "$key"
+    fi
+done
 
-systemctl enable ssh.service
-systemctl disable ssh.socket >/dev/null 2>&1 || true
+/usr/local/sbin/kythos-enable-ssh --offline
 systemctl disable sshd-keygen.service >/dev/null 2>&1 || true

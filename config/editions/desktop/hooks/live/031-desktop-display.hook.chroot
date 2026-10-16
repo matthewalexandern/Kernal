@@ -1,0 +1,5 @@
+#!/bin/sh
+# Register the installed display manager without starting it in the builder.
+# Its live-media conditions leave X :0 to the explicit installer session.
+set -eu
+systemctl enable lightdm.service

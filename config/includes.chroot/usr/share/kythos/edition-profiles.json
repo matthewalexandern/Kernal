@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "editions": {
+    "base": {
+      "description": "Common console foundation",
+      "gui": false,
+      "default_target": "multi-user.target",
+      "retain_live_packages": []
+    },
+    "desktop": {
+      "description": "XFCE desktop with optional smart cards and graphical networking",
+      "gui": true,
+      "default_target": "graphical.target",
+      "retain_live_packages": [
+        "xserver-xorg-core", "xserver-xorg-input-libinput", "xserver-xorg-video-all",
+        "xinit", "xauth", "x11-xserver-utils", "dbus-x11"
+      ]
+    }
+  }
+}

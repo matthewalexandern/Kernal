@@ -1,0 +1,81 @@
+#!/usr/bin/python3
+"""Open NetworkManager's Wi-Fi UI without changing connectivity on launch."""
+
+import argparse
+import os
+import shutil
+import subprocess
+import sys
+
+
+class LaunchError(Exception):
+    pass
+
+
+def query(arguments):
+    try:
+        result = subprocess.run(arguments, stdin=subprocess.DEVNULL, capture_output=True,
+                                text=True, timeout=5, env={**os.environ, "LC_ALL": "C"})
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise LaunchError("NetworkManager did not answer. Check 'systemctl status NetworkManager'.") from error
+    if result.returncode:
+        raise LaunchError("NetworkManager is unavailable or access was denied. "
+                          "Check 'systemctl status NetworkManager' and your session permissions.")
+    return result.stdout.strip()
+
+
+def select_manager(mode, environment, interactive, find=shutil.which, probe=query):
+    """Separate read-only checks from the eventual interactive UI exec."""
+    nmcli = find("nmcli")
+    if not nmcli:
+        raise LaunchError("Missing nmcli. Install the network-manager package to manage Wi-Fi.")
+    devices = probe([nmcli, "--terse", "--fields", "TYPE", "device", "status"])
+    if "wifi" not in devices.splitlines():
+        raise LaunchError("No Wi-Fi adapter is available to NetworkManager. Check USB/PCI attachment, "
+                          "the driver and firmware with 'kythos-hardware-status'. A VM may expose Ethernet only.")
+    radios = probe([nmcli, "--terse", "--fields", "WIFI-HW,WIFI", "general"]).split(":")
+    if len(radios) != 2 or any(state not in ("enabled", "disabled") for state in radios):
+        raise LaunchError("Cannot determine Wi-Fi radio state. Inspect 'nmcli general' and 'rfkill list'.")
+    if radios[0] == "disabled":
+        raise LaunchError("Wi-Fi is blocked by hardware. Check the wireless switch, airplane mode, "
+                          "host USB attachment and 'rfkill list'; a software command cannot clear a hard block.")
+    if radios[1] == "disabled":
+        raise LaunchError("Wi-Fi radio is disabled. Review 'rfkill list'; enable it explicitly with "
+                          "'nmcli radio wifi on' when appropriate, then run WiFi again.")
+    graphical = bool(environment.get("DISPLAY") or environment.get("WAYLAND_DISPLAY"))
+    if mode == "gui" and not graphical:
+        raise LaunchError("No graphical display is available. Run 'WiFi --tty' in an interactive terminal.")
+    if mode == "gui" or mode == "auto" and graphical:
+        manager = find("nm-connection-editor")
+        if manager:
+            return [manager]
+        if mode == "gui" or not interactive:
+            raise LaunchError("Graphical Wi-Fi manager is missing. Install nm-connection-editor, "
+                              "or run 'WiFi --tty' in an interactive terminal.")
+        print("Graphical manager is missing; opening the terminal interface instead.", file=sys.stderr)
+    if not interactive:
+        raise LaunchError("The terminal Wi-Fi manager needs an interactive TTY. "
+                          "Run WiFi locally or use 'ssh -t HOST WiFi --tty'.")
+    manager = find("nmtui")
+    if not manager:
+        raise LaunchError("Missing nmtui. Install network-manager for the terminal Wi-Fi manager.")
+    return [manager, "connect"]
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__, prog="WiFi")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--tty", action="store_true", help="use the terminal interface")
+    mode.add_argument("--gui", action="store_true", help="require the graphical connection editor")
+    args = parser.parse_args(argv)
+    try:
+        command = select_manager("tty" if args.tty else "gui" if args.gui else "auto", os.environ,
+                                 sys.stdin.isatty() and sys.stdout.isatty())
+        os.execv(command[0], command)
+    except (LaunchError, OSError) as error:
+        print("WiFi: " + str(error), file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

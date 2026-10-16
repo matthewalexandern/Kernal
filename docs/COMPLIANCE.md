@@ -2,7 +2,7 @@
 
 ## Claims this release makes
 
-KythOS Kernal 0.1.0 supplies an opt-in OpenSSL FIPS-provider configuration. It
+KythOS Kernal 0.2.0 supplies an opt-in OpenSSL FIPS-provider configuration. It
 also provides **initial STIG-derived hardening with a partial mapping to
 selected Ubuntu 24.04 controls**. It has not been assessed or approved as a
 STIG baseline and is not a FIPS validated cryptographic module, a FIPS
@@ -74,8 +74,9 @@ empty SSH passwords.
 The following requested compatibility choices are explicit deviations:
 
 - Password SSH is permitted and KythOS adds no complexity or expiry policy.
-- The common firewall does not expose port 22 until an edition or administrator
-  adds an inbound rule.
+- The installed common firewall permits TCP port 22 for ordinary password or
+  public-key SSH; root and empty-password logins remain prohibited. The
+  temporary live installer does not start its SSH daemon.
 - Kernel modules, NVIDIA DKMS, IPv4/IPv6, user namespaces, virtualization,
   debugging, USB, Wi-Fi, Bluetooth, core dumps, and forwarding capability stay
   available.

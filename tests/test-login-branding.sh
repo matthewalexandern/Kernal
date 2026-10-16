@@ -47,8 +47,8 @@ import sys
 
 root = Path(sys.argv[1])
 issue = root / "config/includes.chroot/etc/issue"
-assert issue.read_text() == "KythOS Kernal 2027 | https://kythos.ai \\l\n"
-assert (root / "config/includes.chroot/etc/issue.net").read_text() == "KythOS Kernal 2027 | https://kythos.ai\n"
+assert issue.read_text() == "KythOS Kernal[TM] 2027 | https://kythos.ai | terminal: \\l\n"
+assert (root / "config/includes.chroot/etc/issue.net").read_text() == "KythOS Kernal™ 2027 | https://kythos.ai\n"
 # Render through the real agetty issue parser, using only a private test PTY.
 # --show-issue uses its synthetic tty1 context and exits without login/PAM.
 master, slave = pty.openpty()
@@ -59,7 +59,7 @@ try:
 finally:
     os.close(slave)
     os.close(master)
-assert rendered.stdout == "KythOS Kernal 2027 | https://kythos.ai tty1\n", rendered.stdout
+assert rendered.stdout == "KythOS Kernal[TM] 2027 | https://kythos.ai | terminal: tty1\n", rendered.stdout
 
 profile = root / "config/includes.chroot/etc/profile.d/50-kythos-path.sh"
 normal = "/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games"

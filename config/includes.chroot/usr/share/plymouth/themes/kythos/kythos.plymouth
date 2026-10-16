@@ -1,6 +1,6 @@
 [Plymouth Theme]
-Name=KythOS Kernal
-Description=KythOS Kernal animated boot and encrypted-volume prompt
+Name=KythOS Kernal™ 2027
+Description=White shield, progress, boot diagnostics and encrypted-volume prompt
 ModuleName=script
 
 [script]

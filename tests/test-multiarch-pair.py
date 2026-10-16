@@ -88,6 +88,19 @@ class MultiarchPair(unittest.TestCase):
         self.replace_property('arm64', 'source_git_commit', '2' * 40)
         self.reject('source_git_commit')
 
+    def test_separate_desktop_pair_requires_matching_edition_identity(self):
+        for architecture, directory in self.directories.items():
+            provenance = directory / 'build-provenance.txt'
+            provenance.write_text(provenance.read_text() + 'edition=desktop\n')
+            for original in list(directory.glob('*.iso')):
+                original.rename(original.with_name(original.name.replace('-base-', '-desktop-')))
+            self.manifest(architecture)
+        result = self.run_checker()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)['edition'], 'desktop')
+        self.replace_property('arm64', 'edition', 'base')
+        self.reject('ISO name differs from edition identity')
+
     def test_different_canonical_recipe_is_rejected_even_with_same_commit(self):
         path = self.directories['arm64'] / 'recipe-SHA256SUMS'
         path.write_text(path.read_text().replace('b' * 64, 'c' * 64))

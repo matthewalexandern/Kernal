@@ -8,9 +8,11 @@ kythos-help \- inspect installed commands and their local documentation
 .B kythos-help
 .RI "words describing a command"
 .SH DESCRIPTION
-Read the local command index to describe an installed executable, its documented
-options, and recognized command declarations. Search description words when a
-command name is not supplied.
+Inspect installed executables, their local manual declarations and package
+versions, with explicit uncertainty when metadata is missing. Search indexed
+description words when a command name is not supplied. For richer shell context,
+completion candidates, intent proposals and explicit exit-status diagnosis, use
+kythos-assist in interactive Bash.
 The inspected executable is never run and typed text is not sent to a service.
 .PP
 In the default interactive Bash configuration, F1 shows help for the current
@@ -33,6 +35,7 @@ kythos-help list processes
 kythos-help tar
 .fi
 .SH SEE ALSO
+.BR kythos-assist (1),
 .BR bash (1),
 .BR man (1),
 .BR cy (8)

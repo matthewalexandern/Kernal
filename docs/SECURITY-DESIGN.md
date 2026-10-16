@@ -44,8 +44,9 @@ passphrase on the next normal boot. Operators must verify the boot files from
 trusted media after a device leaves their control.
 
 The base installs SSH with ordinary user password and public-key
-authentication, while prohibiting root and empty-password login. It opens no
-inbound service port; editions add explicit rules. The no-complexity/no-expiry
+authentication, while prohibiting root and empty-password login. Installed
+systems enable SSH and permit inbound TCP port 22; the temporary live installer
+account remains local-only. Editions add explicit rules for their other services. The no-complexity/no-expiry
 password choice is a documented STIG deviation. NVIDIA drivers remain
 edition-selected and require DKMS/MOK enrollment under Secure Boot.
 

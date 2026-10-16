@@ -1,0 +1,14 @@
+#!/bin/sh
+# Configure GUI integrations offline; never probe a builder's readers or display.
+set -eu
+
+# Enabling the socket is sufficient: pcscd starts when an application requests it.
+# Starting host services inside the image-building chroot would be incorrect.
+systemctl enable pcscd.socket
+
+/usr/local/libexec/kythos-configure-smartcards
+
+# Loading a PKCS#11 module without a token is valid; it validates the installed
+# integration, not reader/card compatibility or an authentication operation.
+p11-kit list-modules >/dev/null
+printf '%s\n' 'KythOS desktop: PC/SC socket and OpenSC/Firefox integration configured; card operation requires hardware acceptance.'

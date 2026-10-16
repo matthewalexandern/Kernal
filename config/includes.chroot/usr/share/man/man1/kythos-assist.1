@@ -1,0 +1,65 @@
+.TH KYTHOS-ASSIST 1 "2027" "KythOS Kernal" "User Commands"
+.SH NAME
+kythos-assist \- inspect shell commands using offline documentation and metadata
+.SH SYNOPSIS
+.B kythos-assist
+.RB [ --explain | --complete | --intent | --diagnose ]
+.RB [ --status " N" ]
+.RB [ --json ]
+.RI "command line or description words"
+.SH DESCRIPTION
+Discover installed executables and inspect local manual declarations, versions
+from the package database, and literal shell syntax. No inspected executable,
+help option, version probe or proposed command is run. No typed text, history
+or environment dump is saved or sent to a service.
+.PP
+Interactive Bash adds builtin, alias, function and completion names without
+reading definitions or calling dynamic completion callbacks. The standalone
+executable cannot inspect its parent shell's unexported definitions.
+.PP
+Quote a whole shell expression so the current shell passes it as data. The
+inspector describes pipelines, conditionals, quoting, redirections and literal
+paths. It does not evaluate expansions, substitutions, globbing, here-documents
+or compound programs. Missing documentation produces explicit uncertainty.
+.SH OPTIONS
+.TP
+.B --explain
+Explain the command and documented options. This is the default mode.
+.TP
+.B --complete
+Print locally grounded candidate names. Nothing is inserted or executed.
+.TP
+.B --intent
+Preview a reviewed phrase or typo correction, or search local descriptions.
+Description matches do not establish an argument grammar.
+.TP
+.B --diagnose
+Inspect an explicitly supplied exit status and command context. No earlier
+output or shell history is collected. An exit status alone cannot prove cause.
+.TP
+.B --status N
+Supply the failed command's exit status for diagnosis.
+.TP
+.B --json
+Emit a structured local result with title, lines, candidates and proposal.
+.SH INTERACTIVE BINDINGS
+F1 inspects the current Bash edit buffer. Tab previews a recognized correction;
+a second Tab or Right Arrow copies it for review. Ordinary Enter executes.
+Native completion, history and custom bindings retain their normal behavior.
+.SH PRIVACY
+Explanations do not repeat arbitrary argument values. Recognized credential
+arguments suppress correction previews. Positional secrets cannot reliably be
+identified: use the application's protected input rather than command-line
+credentials. Assistance reads neither command history nor arbitrary file
+contents, and does not send data to an online model.
+.SH EXAMPLES
+.nf
+kythos-assist --explain 'ls --all ./docs | grep report > matches'
+kythos-assist --complete 'systemctl --no'
+kythos-assist --intent 'compress files'
+kythos-assist --diagnose --status 127 'missing-tool argument'
+.fi
+.SH SEE ALSO
+.BR kythos-help (1),
+.BR bash (1),
+.BR man (1)

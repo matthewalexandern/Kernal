@@ -2,7 +2,7 @@ import QtQuick 2.7
 import QtQuick.Controls 2.2
 
 Rectangle {
-    color: "#0c1522"
+    color: "#0b0b0b"
 
     Flickable {
         id: viewport
@@ -37,7 +37,7 @@ Rectangle {
                 spacing: 8
                 Text {
                     text: qsTr("YOUR INSTALLATION")
-                    color: "#00d5e8"
+                    color: "#ffffff"
                     font.family: "DejaVu Sans"
                     font.pixelSize: 11
                     font.weight: Font.DemiBold
@@ -46,7 +46,7 @@ Rectangle {
                 Text {
                     width: parent.width
                     text: qsTr("A foundation you control.")
-                    color: "#f4faff"
+                    color: "#ffffff"
                     font.family: "DejaVu Sans"
                     font.pixelSize: 29
                     font.weight: Font.DemiBold
@@ -55,7 +55,7 @@ Rectangle {
                 Text {
                     width: parent.width
                     text: qsTr("Choose your storage, protect your system, and build from one maintained common base.")
-                    color: "#b5c6d5"
+                    color: "#c8c8c8"
                     font.family: "DejaVu Sans"
                     font.pixelSize: 14
                     wrapMode: Text.WordWrap
@@ -84,16 +84,16 @@ Rectangle {
                             body: qsTr("Set a password for recovery and SSH. After installation, enroll a FIDO2 key for local console login with kythos-fido-login. Automatic local login is optional and off by default.")
                         },
                         {
-                            number: "04", title: qsTr("One base, four directions"),
-                            body: qsTr("Start at a terminal with a maintained kernel, broad drivers and firmware, networking, SSH, and audit tools. Add your desktop, server, hypervisor, or AI stack. The live desktop is removed.")
+                            number: "04", title: qsTr("Your chosen edition"),
+                            body: qsTr("This ISO installs its named edition with a maintained kernel, drivers and firmware, networking, SSH, and audit tools. Recovery and troubleshooting entries remain available in the boot menu.")
                         }
                     ]
                     Rectangle {
                         width: cards.cardWidth
                         height: Math.max(176, cardContent.height + 36)
                         radius: 8
-                        color: "#111f30"
-                        border.color: "#263a50"
+                        color: "#171717"
+                        border.color: "#3c3c3c"
                         Column {
                             id: cardContent
                             x: 18
@@ -107,11 +107,11 @@ Rectangle {
                                     width: 28
                                     height: 25
                                     radius: 5
-                                    color: "#173248"
+                                    color: "#2e2e2e"
                                     Text {
                                         anchors.centerIn: parent
                                         text: modelData.number
-                                        color: "#83edf5"
+                                        color: "#ffffff"
                                         font.family: "DejaVu Sans"
                                         font.pixelSize: 11
                                         font.weight: Font.DemiBold
@@ -121,7 +121,7 @@ Rectangle {
                                     width: parent.width - 38
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: modelData.title
-                                    color: "#f4faff"
+                                    color: "#ffffff"
                                     font.family: "DejaVu Sans"
                                     font.pixelSize: 16
                                     font.weight: Font.DemiBold
@@ -131,7 +131,7 @@ Rectangle {
                             Text {
                                 width: parent.width
                                 text: modelData.body
-                                color: "#b5c6d5"
+                                color: "#c8c8c8"
                                 font.family: "DejaVu Sans"
                                 font.pixelSize: 13
                                 wrapMode: Text.WordWrap
@@ -145,7 +145,7 @@ Rectangle {
             Text {
                 width: parent.width
                 text: qsTr("Review the full plan on Summary before the installer changes your disks.")
-                color: "#8da2b6"
+                color: "#b8b8b8"
                 font.family: "DejaVu Sans"
                 font.pixelSize: 12
                 wrapMode: Text.WordWrap

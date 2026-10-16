@@ -6,23 +6,25 @@ windowExpanding: normal
 windowSize: 1000px,720px
 windowPlacement: center
 strings:
-  productName: KythOS Kernal
-  shortProductName: KythOS Kernal
-  version: 0.1.0
-  shortVersion: 0.1
-  versionedName: KythOS Kernal 0.1.0
-  shortVersionedName: KythOS Kernal 0.1.0
-  bootloaderEntryName: KythOS Kernal
+  productName: KythOS Kernal™ 2027
+  shortProductName: KythOS Kernal™ 2027
+  version: 0.2.0
+  shortVersion: 0.2
+  versionedName: KythOS Kernal™ 2027
+  shortVersionedName: KythOS Kernal™ 2027
+  bootloaderEntryName: KythOS Kernal™ 2027
+  productUrl: https://kythos.ai
+  supportUrl: https://kythos.ai
 sidebar: widget
 navigation: widget
 images:
-  productLogo: kythos-logo.png
-  productIcon: kythos-logo.png
-  productWelcome: kythos-logo.png
+  productLogo: kythos-logo.svg
+  productIcon: kythos-logo.svg
+  productWelcome: kythos-logo.svg
 slideshow: show.qml
 slideshowAPI: 2
 style:
-  SidebarBackground: "#07101b"
-  SidebarText: "#a9bac9"
-  SidebarTextCurrent: "#00d5e8"
-  SidebarBackgroundCurrent: "#0d2838"
+  SidebarBackground: "#080808"
+  SidebarText: "#c8c8c8"
+  SidebarTextCurrent: "#ffffff"
+  SidebarBackgroundCurrent: "#242424"

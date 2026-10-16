@@ -1,0 +1,140 @@
+#!/usr/bin/python3 -I
+"""Apply an allowlisted terminal palette and save an ordinary user preference."""
+
+import argparse
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import subprocess
+import sys
+import tempfile
+
+
+DATA = Path(__file__).resolve().parents[2] / 'share/kythos/terminal-themes.json'
+SYSTEM_PREFERENCE = Path('/etc/kythos/terminal-theme')
+TMUX = '/usr/bin/tmux'
+
+
+def themes(path=DATA):
+    value = json.loads(path.read_text(encoding='utf-8'))
+    for name, theme in value.items():
+        if (not re.fullmatch(r'[a-z-]+', name) or
+                any(not re.fullmatch(r'#[0-9a-f]{6}', theme[key])
+                    for key in ('foreground', 'background')) or
+                theme['ansi_foreground'] not in (30, 37) or
+                theme['ansi_background'] not in (40, 47)):
+            raise ValueError('Invalid installed terminal theme data.')
+    if 'dark' not in value:
+        raise ValueError('The installed dark terminal theme is missing.')
+    return value
+
+
+def user_preference():
+    # XDG_CONFIG_HOME is intentionally honored only for the invoking user.
+    base = Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config')
+    if not base.is_absolute():
+        base = Path.home() / '.config'
+    return base / 'kythos/terminal-theme'
+
+
+def read_preference(path, choices):
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(descriptor, 'rb') as source:
+            if not stat.S_ISREG(os.fstat(source.fileno()).st_mode):
+                return None
+            raw = source.read(65)
+        if len(raw) > 64:
+            return None
+        value = raw.decode('ascii').strip()
+        return value if value in choices else None
+    except (OSError, UnicodeError):
+        return None
+
+
+def selected_theme(choices):
+    return (read_preference(user_preference(), choices) or
+            read_preference(SYSTEM_PREFERENCE, choices) or 'dark')
+
+
+def save_preference(name, path=None):
+    path = user_preference() if path is None else path
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix='.terminal-theme-', dir=path.parent)
+    try:
+        with os.fdopen(descriptor, 'w', encoding='ascii') as output:
+            output.write(name + '\n')
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def escape_sequence(theme, term):
+    foreground, background = theme['foreground'], theme['background']
+    fg, bg = theme['ansi_foreground'], theme['ansi_background']
+    if term == 'linux':
+        # Set only this VT's two normal color entries. No global PIO_CMAP.
+        palette = {fg - 30: foreground[1:], bg - 40: background[1:]}
+        return ''.join('\x1b]P{:x}{}'.format(index, color) for index, color in palette.items()) + '\x1b[{};{}m'.format(fg, bg)
+    if term.startswith(('xterm', 'rxvt', 'vte', 'alacritty', 'foot', 'kitty', 'screen', 'tmux')):
+        # tmux may filter OSC default-color changes; its status palette is also
+        # updated separately. Select the configured defaults with SGR39/49;
+        # indexed SGR37/40 would select different ANSI colors and hide them.
+        return ('\x1b]10;' + foreground + '\x07\x1b]11;' + background + '\x07' +
+                '\x1b[39;49m')
+    return ''
+
+
+def apply(theme, environment=None):
+    environment = os.environ if environment is None else environment
+    if not sys.stdout.isatty() or environment.get('TERM', 'dumb') == 'dumb':
+        return
+    sys.stdout.write(escape_sequence(theme, environment.get('TERM', 'dumb')))
+    sys.stdout.flush()
+    if environment.get('TMUX'):
+        try:
+            # Do not change an ordinary user tmux session's status bar.
+            check = subprocess.run([TMUX, 'show-options', '-gv', '@kythos_console_managed'],
+                                   stdin=subprocess.DEVNULL, capture_output=True, timeout=1)
+            if check.returncode == 0 and check.stdout.strip() == b'1':
+                subprocess.run([TMUX, 'set-option', '-g', 'status-style',
+                                'fg={},bg={}'.format(theme['foreground'], theme['background'])],
+                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, timeout=1, check=False)
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('theme', nargs='?', help='Theme name; saves and applies your preference')
+    parser.add_argument('--list', action='store_true', help='List the installed themes')
+    parser.add_argument('--apply', action='store_true', help='Apply the saved preference without printing a message')
+    parser.add_argument('--show', action='store_true', help='Print the current theme name')
+    arguments = parser.parse_args(argv)
+    try:
+        choices = themes()
+        if arguments.theme and arguments.theme not in choices:
+            parser.error('choose one of: ' + ', '.join(choices))
+        if arguments.theme:
+            save_preference(arguments.theme)
+        name = selected_theme(choices)
+        if arguments.list:
+            print('\n'.join('{}: {}'.format(key, value['label']) for key, value in choices.items()))
+        elif arguments.show:
+            print(name)
+        else:
+            apply(choices[name])
+            if not arguments.apply:
+                print('Terminal theme: {}. New terminals use this preference.'.format(name))
+        return 0
+    except (OSError, ValueError) as error:
+        print('kythos-theme: ' + str(error), file=sys.stderr)
+        return 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

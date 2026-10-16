@@ -122,44 +122,41 @@ class FinishInstallHookTests(unittest.TestCase):
             ],
         )
 
-    def test_advanced_installer_forces_terminal_default(self):
+    def test_advanced_installer_enables_ssh_and_selected_edition_boot_target(self):
         with tempfile.TemporaryDirectory(prefix="kythos-finish-hook-test-") as folder:
             folder = Path(folder)
             log = folder / "in-target.log"
             fake = folder / "in-target"
             fake.write_text(
-                "#!/bin/sh\n"
-                "set -eu\n"
+                "#!/bin/sh\nset -eu\n"
                 "printf '%s\\n' \"$*\" >> \"$KYTHOS_TEST_LOG\"\n"
-                "if test \"$*\" = '/usr/bin/systemctl get-default'; then\n"
-                "    printf '%s\\n' multi-user.target\n"
-                "fi\n"
-            )
+                "case \"$*\" in\n"
+                "  '/usr/bin/systemctl get-default'|'/usr/local/libexec/kythos-edition --get default_target') "
+                "printf '%s\\n' \"$KYTHOS_TEST_TARGET\" ;;\n"
+                "  '/usr/bin/systemctl is-enabled ssh.service') printf '%s\\n' enabled ;;\n"
+                "esac\n")
             fake.chmod(0o755)
-            environment = {
-                "PATH": f"{folder}:/usr/bin:/bin",
-                "KYTHOS_TEST_LOG": str(log),
-            }
             runner = (
                 "test() {\n"
                 "    if [ \"$1\" = -x ] && [ \"$2\" = "
                 "'/target/usr/local/libexec/kythos-calamares-clean-live-files' ]; then\n"
-                "        return 0\n"
-                "    fi\n"
-                "    command test \"$@\"\n"
-                "}\n"
-                ". \"$1\"\n"
-            )
-            subprocess.run(["/bin/sh", "-eu", "-c", runner, "hook-test", str(FINISH_HOOK)],
-                           check=True, env=environment)
-            self.assertEqual(
-                log.read_text().splitlines(),
-                [
-                    "/usr/local/libexec/kythos-calamares-clean-live-files",
-                    "/usr/bin/systemctl set-default multi-user.target",
-                    "/usr/bin/systemctl get-default",
-                ],
-            )
+                "        return 0\n    fi\n    command test \"$@\"\n}\n. \"$1\"\n")
+            for selected in ('multi-user.target', 'graphical.target'):
+                with self.subTest(selected=selected):
+                    log.unlink(missing_ok=True)
+                    environment = {"PATH": f"{folder}:/usr/bin:/bin", "KYTHOS_TEST_LOG": str(log),
+                                   "KYTHOS_TEST_TARGET": selected}
+                    subprocess.run(["/bin/sh", "-eu", "-c", runner, "hook-test", str(FINISH_HOOK)],
+                                   check=True, env=environment)
+                    expected = ["/usr/local/libexec/kythos-calamares-clean-live-files",
+                                "/usr/local/sbin/kythos-enable-ssh --offline",
+                                "/usr/bin/systemctl is-enabled ssh.service",
+                                "/usr/local/libexec/kythos-edition --get default_target"]
+                    if selected == 'graphical.target':
+                        expected.append('/usr/bin/systemctl enable lightdm.service')
+                    expected += ["/usr/bin/systemctl set-default " + selected,
+                                 "/usr/bin/systemctl get-default"]
+                    self.assertEqual(log.read_text().splitlines(), expected)
 
 
 class SourceReportTests(unittest.TestCase):

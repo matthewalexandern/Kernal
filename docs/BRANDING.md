@@ -1,21 +1,28 @@
 # KythOS Kernal identity
 
-The full display name is **KythOS Kernal**, including that spelling. Debian's
+The display branding is **KythOS Kernal™ 2027** and **https://kythos.ai**,
+including the spelling Kernal. The release version is independent of the
+requested display year. Use `[TM]` when a console font cannot display ™; the
+symbol expresses a trademark claim, not a registered trademark. Debian's
 derivative guidance encourages a derivative to replace the parent project's
 name, logo, and service identity. Its trademark policy does not require dropping
 the word Kernal from this independent name.
 
 The operating-system release name and version, login banners, message of the
 day, boot menus, ISO labels, installer presentation, and Plymouth theme metadata
-use KythOS Kernal. The normal boot animation displays only the approved cyan
-mark on black. Encryption prompts and boot questions remain readable.
+use KythOS Kernal branding. The normal loading screen displays a white shield
+on black and small product text in its lower-right corner. Encryption prompts
+and boot questions remain readable. Esc exposes Plymouth boot diagnostics; the
+GRUB diagnostics entry disables Plymouth, while existing recovery and
+troubleshooting entries are retained.
 The SSH server omits the distribution suffix from its protocol banner while
 retaining the upstream OpenSSH version.
 
-The local console banner is `KythOS Kernal 2027 | https://kythos.ai tty1`, with the
-terminal name expanded by agetty from `\l` in `/etc/issue`. The year `2027`
+The local console banner uses
+`KythOS Kernal[TM] 2027 | https://kythos.ai | terminal: tty1`, with the terminal
+name expanded by agetty from `\l` in `/etc/issue`. The year `2027`
 is the requested banner text, independent of the release version and build
-date. `/etc/issue.net` uses the same identity without a terminal suffix.
+date. `/etc/issue.net` uses the Unicode ™ identity without a terminal suffix.
 The displayed domain does not change the machine's hostname or DNS settings.
 
 The installer keeps its upstream native template loader. A startup hook routes
@@ -48,17 +55,49 @@ Archive selection and update-service explanations continue to identify the
 actual upstream provider. The filter does not rename the upstream archive as
 if it were a KythOS service.
 
-Calamares uses the KythOS Kernal product name and the approved cyan mark in its
-own branding directory. The separate native setup guide uses the same mark
-and names the common base accurately; it does not present future editions as
-available installation choices. Upstream Calamares and package license
-notices remain available.
+Calamares uses the white vector shield, neutral dark styling, exact product
+branding and project URL in its own branding directory. Each normal ISO
+installs its named edition; the installer does not offer four edition choices.
+Upstream Calamares and package license notices remain available.
 
 The OS release files are locally diverted through dpkg so a base-files upgrade
 delivers its upstream identity to the `.distrib` paths and preserves the KythOS
 identity. Both `/etc/os-release` and `/usr/lib/os-release` identify the system
 as `ID=kythos` and `ID_LIKE=debian`. The dpkg vendor is KythOS, with Debian as
 its parent. These machine identifiers describe compatibility and inheritance.
+
+## Artwork and boot behavior
+
+`assets/branding/kythos-mark-white.svg` is the canonical, self-contained vector
+source. The original hand geometry commemorates **9:06 AM**, the birth time of
+the user's son Cyrus. This meaning is preserved; Cyrus is not a visible product
+name. The enclosed monogram is a contour conversion of the opaque core of the
+original approved cyan mark, uniformly scaled and translated inside a clean
+white shield. It does not substitute clock hands or independently rotate,
+stretch or redesign any hand. The loop and negative spaces remain intact.
+The original cyan PNG and SHA-256 are retained as provenance; its glow is not
+part of the new artwork. The conversion recipe is in
+[assets/branding/IMAGEGEN-PROMPT.md](../assets/branding/IMAGEGEN-PROMPT.md).
+
+Calamares consumes the SVG directly. Plymouth, GRUB, Syslinux and the Debian
+Installer consume deterministic PNG derivatives sized for their supported
+framebuffers. Installer filenames `logo_debian.png` and
+`logo_debian_dark.png` are upstream interfaces, not Debian logo artwork.
+The small wordmark is separate from the shield and never crosses its boundary.
+
+The loading bar shows Plymouth's supplied boot progress when it changes.
+If no new progress arrives for five seconds, a moving segment indicates
+activity instead of estimating an artificial percentage. It remains separate
+from password entry and boot questions. The `plymouth-label` plugin is an
+explicit dependency so text and encrypted-root prompts remain functional even
+when installation disables recommended packages.
+
+Source checks verify the preserved monogram geometry, white pixels,
+containment, wordmark placement, identical installer variants and regenerated
+artifacts. An optional test runs the actual Debian Plymouth script interpreter
+and image/text/sprite libraries without a DRM screen. These checks do not
+establish boot timing, Esc behavior or successful encrypted installation on
+hardware; both architecture ISO boot/install checks remain acceptance work.
 
 ## References retained for functionality and attribution
 

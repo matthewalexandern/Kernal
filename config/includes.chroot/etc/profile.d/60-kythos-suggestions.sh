@@ -2,6 +2,62 @@
 # Tab previews; a second Tab or Right accepts. Only ordinary Enter executes.
 [ -n "${BASH_VERSION:-}" ] || return 0
 case $- in *i*) ;; *) return 0 ;; esac
+
+# This explicit interface also works with custom bindings, vi mode, or disabled
+# suggestions. Only names and completion declarations travel over an anonymous
+# pipe. No history, function bodies, alias expansions, environment dump, error
+# output, or files from the working directory are collected.
+function __kythos_assist {
+    local mode=explain status= json= name item key count line
+    while (( $# )); do
+        case $1 in
+            --explain|--complete|--intent|--diagnose) mode=${1#--}; shift ;;
+            --status)
+                if (( $# < 2 )) || [[ ! $2 =~ ^[0-9]{1,3}$ ]]; then
+                    builtin printf '%s\n' 'Usage: kythos-assist [--explain|--complete|--intent|--diagnose] [--status N] command-line' >&2
+                    return 2
+                fi
+                status=$2; shift 2 ;;
+            --json) json=-json; shift ;;
+            --help|-h) command /usr/local/libexec/kythos-command-suggest --assist --help; return ;;
+            --) shift; break ;;
+            *) break ;;
+        esac
+    done
+    if (( $# <= 1 )); then
+        line=${1-}
+    else
+        # Keep distinct argv values distinct when the user supplies a command
+        # and arguments rather than one quoted shell expression.
+        builtin printf -v line '%q ' "$@"
+        line=${line% }
+    fi
+    {
+        builtin printf '%s\0%s\0%s\0' "$mode" "$status" "$line"
+        for key in builtins aliases functions keywords; do
+            case $key in
+                builtins) item=builtin ;; aliases) item=alias ;;
+                functions) item=function ;; keywords) item=keyword ;;
+            esac
+            count=0
+            while IFS= read -r name; do
+                [[ $name =~ ^[a-zA-Z0-9][a-zA-Z0-9_.+-]{0,254}$ ]] || continue
+                builtin printf '%s:%s\0' "$key" "$name"
+                (( ++count < 2048 )) || break
+            done < <(builtin compgen -A "$item")
+        done
+        count=0
+        while IFS= read -r item; do
+            (( ${#item} <= 4096 )) || continue
+            builtin printf 'completion:%s\0' "$item"
+            (( ++count < 2048 )) || break
+        done < <(builtin complete -p 2>/dev/null)
+    } | /usr/local/libexec/kythos-command-suggest "--assist-shell${json}"
+}
+case $(builtin type -t kythos-assist 2>/dev/null) in
+    alias|function) ;; # A deliberately supplied user interface takes precedence.
+    *) function kythos-assist { __kythos_assist "$@"; } ;;
+esac
 [ "${KYTHOS_SUGGESTIONS:-1}" != 0 ] || return 0
 [ "${__kythos_suggestions_loaded:-0}" != 1 ] || return 0
 [[ -t 0 && -t 1 && ${TERM:-dumb} != dumb ]] || return 0
@@ -152,8 +208,7 @@ __kythos_suggestions_help() {
             esac
         fi
     fi
-    if output=$(builtin printf '%s\n' "$READLINE_LINE" |
-        /usr/local/libexec/kythos-command-suggest --help-line 2>/dev/null); then
+    if output=$(__kythos_assist --explain -- "$READLINE_LINE" 2>/dev/null); then
         builtin printf '\n%s\n' "$output"
     fi
 }

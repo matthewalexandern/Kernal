@@ -19,6 +19,9 @@ architecture=${KYTHOS_ARCH:-amd64}
 profile_tool="$repo_root/config/includes.chroot/usr/local/libexec/kythos-architecture"
 kernel_flavour=$("$profile_tool" --arch "$architecture" --get kernel_flavour)
 bootloaders=$("$profile_tool" --arch "$architecture" --get bootloaders)
+edition=${KYTHOS_EDITION:-base}
+edition_tool="$repo_root/config/includes.chroot/usr/local/libexec/kythos-edition"
+"$edition_tool" --edition "$edition" >/dev/null
 
 if test "$#" -ne 0; then
     echo 'Kernal base does not accept lb config overrides.' >&2
@@ -63,4 +66,4 @@ lb config noauto \
     --iso-application 'KythOS Kernal' \
     --iso-publisher 'KythOS' \
     --iso-volume 'KYTHOS_KERNAL' \
-    --image-name "kythos-kernal-base-${version}"
+    --image-name "kythos-kernal-${edition}-${version}"

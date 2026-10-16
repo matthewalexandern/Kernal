@@ -1,2 +1,4 @@
-# KythOS editions place explicit inbound accept rules in this file.
-# The common base intentionally exposes no network service.
+# Remote access is available after installation on IPv4 and IPv6. The live
+# installer never starts ssh.service: its temporary account is local-only.
+tcp dport 22 accept
+# Editions and administrators add other required inbound service rules here.

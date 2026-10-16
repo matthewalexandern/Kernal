@@ -213,6 +213,46 @@ class BashSuggestionTests(unittest.TestCase):
         self.assertEqual(shell.state()[0], 'private_fixture')
         self.assertEqual(shell.executions(), [])
 
+    def test_explicit_assistance_discovers_shell_names_and_completion_without_execution(self):
+        shell = self.shell()
+        shell.command("function fixture_function { ip must-not-run; }; alias fixture_alias='ip must-not-run'; "
+                      "complete -W 'alpha alpine beta' fixturecmd; "
+                      "_dangerous_complete() { ip must-not-run; }; complete -F _dangerous_complete fixture_dynamic")
+        output = shell.command("kythos-assist --complete fixture_")
+        self.assertIn(b'fixture_function', output)
+        self.assertIn(b'fixture_alias', output)
+        output = shell.command("kythos-assist --complete 'fixturecmd al'")
+        self.assertIn(b'Candidates: alpha alpine', output)
+        output = shell.command("kythos-assist --complete 'fixture_dynamic a'")
+        self.assertIn(b'dynamic shell completion is registered', output)
+        self.assertEqual(shell.executions(), [])
+
+    def test_f1_inspects_pipeline_without_running_or_opening_output(self):
+        shell = self.shell()
+        line = "ssh --unknown-option 'a | b' | ip 2> output-must-not-exist"
+        shell.send(line + '\x1bOP')
+        output = shell.wait_for(b'Pipeline/conditional:')
+        self.assertIn(b'Redirection 2>', output + shell.read(0.2))
+        self.assertEqual(shell.state()[0], line)
+        self.assertEqual(shell.executions(), [])
+        self.assertFalse((shell.directory / 'output-must-not-exist').exists())
+
+    def test_sensitive_arguments_are_not_duplicated_in_suggestion_preview(self):
+        shell = self.shell()
+        line = 'sshcopyid --password private-value-196'
+        shell.send(line + '\t')
+        output = shell.read(0.4)
+        self.assertNotIn(b'Suggested:', output)
+        self.assertEqual(shell.state()[0], line)
+        self.assertEqual(shell.executions(), [])
+
+    def test_explicit_assistance_available_when_suggestions_disabled(self):
+        shell = self.shell('KYTHOS_SUGGESTIONS=0')
+        output = shell.command("kythos-assist --diagnose --status 127 'missing-command'")
+        self.assertIn(b'Exit status 127', output)
+        self.assertIn(b'not found', output)
+        self.assertEqual(shell.executions(), [])
+
     def test_filename_and_programmable_completion_use_native_tab(self):
         shell = self.shell()
         (shell.directory / 'unique-completion-target').touch()

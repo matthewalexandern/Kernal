@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -67,6 +68,17 @@ class ReadinessTests(unittest.TestCase):
             self.assertIsNone(result["memory_gib"])
             self.assertEqual(result["disks"], [])
             self.assertEqual(result["secure_boot"], "Not available in BIOS boot")
+
+    def test_theme_preference_is_allowlisted_and_contains_no_install_plan(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            setup.save_terminal_theme('high-contrast', home=home)
+            preference = home / '.config/kythos/terminal-theme'
+            self.assertEqual(preference.read_text(), 'high-contrast\n')
+            self.assertEqual(preference.stat().st_mode & 0o777, 0o600)
+            with self.assertRaises(ValueError):
+                setup.save_terminal_theme('dark; touch /tmp/unwanted', home=home)
+            self.assertEqual(preference.read_text(), 'high-contrast\n')
 
 
 class LauncherTests(unittest.TestCase):
@@ -189,13 +201,18 @@ class NativeGuiTests(unittest.TestCase):
         self.application.processEvents()
         self.assertEqual(window.pages.count(), 4)
         self.assertFalse(window.back_button.isEnabled())
+        self.assertEqual(window.terminal_theme.count(), 6)
+        self.assertEqual(window.terminal_theme.currentData(), 'dark')
         for _ in range(3):
             window.next_action()
             self.application.processEvents()
         self.assertEqual(window.page_index, 3)
         self.assertEqual(window.next_button.text(), "Open installer")
         self.assertFalse(window.next_button.isEnabled())
-        window.next_action()
+        window.terminal_theme.setCurrentIndex(window.terminal_theme.findData('teal'))
+        with mock.patch.object(setup, 'save_terminal_theme') as save:
+            window.next_action()
+            save.assert_not_called()
         self.assertEqual(window.installer.state(), QProcess.ProcessState.NotRunning)
         window.close()
 
@@ -208,7 +225,10 @@ class NativeGuiTests(unittest.TestCase):
         # Substitute an inert test program on this in-memory QObject only.
         window.installer.setProgram("/usr/bin/true")
         window.change_page(3)
-        window.next_action()
+        window.terminal_theme.setCurrentIndex(window.terminal_theme.findData('teal'))
+        with mock.patch.object(setup, 'save_terminal_theme') as save:
+            window.next_action()
+            save.assert_called_once_with('teal')
         self.assertTrue(window.installer.waitForStarted(1000))
         self.assertTrue(window.installer.waitForFinished(1000))
         self.application.processEvents()

@@ -165,6 +165,11 @@ def verify_architecture(directory, architecture):
             if path.name.endswith('.iso'):
                 require(path.name in entries, architecture + ': undeclared ISO artifact')
         provenance = properties(artifacts.read('build-provenance.txt'), architecture)
+        edition = provenance.get('edition', 'base')
+        require(re.fullmatch(r'[a-z][a-z0-9-]*', edition) is not None,
+                architecture + ': invalid edition identity')
+        require(image_name.startswith('kythos-kernal-' + edition + '-'),
+                architecture + ': ISO name differs from edition identity')
         require(provenance.get('source_git_state') == 'clean', architecture + ': source checkout was not clean')
         require(provenance.get('debian_architecture') == architecture, architecture + ': missing/wrong provenance architecture')
         require(re.fullmatch(r'[0-9a-f]{40}', provenance.get('source_git_commit', '')) is not None,
@@ -186,7 +191,7 @@ def verify_architecture(directory, architecture):
         for name, expected in entries.items():
             require(artifacts.digest(name) == expected, architecture + ': checksum mismatch: ' + name)
         require(artifacts.read('SHA256SUMS') == manifest, architecture + ': manifest changed during verification')
-        return {'provenance': provenance, 'recipe': recipe, 'image_name': image_name,
+        return {'provenance': provenance, 'recipe': recipe, 'image_name': image_name, 'edition': edition,
                 'summary': {'verified_artifacts': len(entries),
                             'binary_iso': {'file': binary, 'sha256': entries[binary]},
                             'source_iso': {'file': source, 'sha256': entries[source]}}}
@@ -201,8 +206,10 @@ def check_pair(amd64, arm64):
     for key in SHARED:
         require(left['provenance'][key] == right['provenance'][key], 'Architecture pair differs: ' + key)
     require(left['recipe'] == right['recipe'], 'Architecture pair differs: canonical recipe-SHA256SUMS')
+    require(left['edition'] == right['edition'], 'Architecture pair differs: edition')
     require(left['image_name'] == right['image_name'], 'Architecture pair differs: image release name')
     return {'result': 'passed', **{key: left['provenance'][key] for key in SHARED},
+            'edition': left['edition'],
             'recipe_sha256': hashlib.sha256(left['recipe']).hexdigest(),
             'architectures': {'amd64': left['summary'], 'arm64': right['summary']},
             'boot_validation': 'not_assessed'}

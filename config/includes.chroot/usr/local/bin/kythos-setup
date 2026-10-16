@@ -1,8 +1,9 @@
 #!/usr/bin/python3
 """Native live-media preparation guide. Calamares owns installation settings.
 
-The guide reads hardware state and starts a fixed launcher. It never stores
-accounts, partition choices, passwords, or installation plans.
+The guide reads hardware state, saves only an allowlisted terminal appearance
+preference, and starts a fixed launcher. It never stores accounts, partition
+choices, passwords, or installation plans.
 """
 
 import json
@@ -11,12 +12,30 @@ from pathlib import Path
 import platform
 import re
 import sys
+import tempfile
 
 
-TITLE = "KythOS Kernal"
+TITLE = "KythOS Kernal™ 2027"
+THEME_DATA = Path(__file__).resolve().parents[2] / "share/kythos/terminal-themes.json"
 INSTALL_LAUNCHER = "/usr/local/bin/kythos-install"
 LOGO = "/usr/share/plymouth/themes/kythos/kythos-logo.png"
 HARDWARE_COMMAND = "/usr/local/bin/kythos-hardware-status"
+
+
+def save_terminal_theme(name, *, home=None):
+    choices = json.loads(THEME_DATA.read_text(encoding="utf-8"))
+    if name not in choices:
+        raise ValueError("Choose an installed terminal theme.")
+    directory = (Path.home() if home is None else home) / ".config/kythos"
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix=".terminal-theme-", dir=directory)
+    try:
+        with os.fdopen(descriptor, "w", encoding="ascii") as output:
+            output.write(name + "\n")
+        os.replace(temporary, directory / "terminal-theme")
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
 
 
 def read_text(path, fallback=""):
@@ -95,7 +114,7 @@ def build_window(info, *, start_hardware=True):
     from PyQt6.QtCore import Qt, QProcess, QSize, QTimer
     from PyQt6.QtGui import QIcon, QPixmap
     from PyQt6.QtWidgets import (
-        QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton,
+        QComboBox, QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton,
         QScrollArea, QSizePolicy, QStackedWidget, QVBoxLayout, QWidget,
     )
 
@@ -131,18 +150,19 @@ def build_window(info, *, start_hardware=True):
                 QMainWindow, QWidget { background:#0c1522; color:#e5eef5; font-size:14px; }
                 QWidget#sidebar { background:#07101b; }
                 QWidget#sidebar QLabel { background:transparent; }
-                QLabel#brand { color:#00d5e8; font-size:24px; font-weight:700; }
-                QLabel#eyebrow { color:#00d5e8; font-size:12px; font-weight:700; }
+                QLabel#brand { color:#ffffff; font-size:18px; font-weight:600; }
+                QLabel#eyebrow { color:#ffffff; font-size:12px; font-weight:600; }
                 QLabel#heading { color:#f4faff; font-size:30px; font-weight:600; }
                 QLabel#body { color:#b5c6d5; font-size:15px; }
                 QLabel#step { color:#7d93a6; padding:12px 10px; border-left:2px solid #233346; }
-                QLabel#step[active="true"] { color:#00d5e8; border-left:2px solid #00d5e8; background:#0d2030; }
+                QLabel#step[active="true"] { color:#ffffff; border-left:2px solid #ffffff; background:#1c2026; }
                 QFrame#card { background:#111f30; border:1px solid #263a50; border-radius:9px; }
                 QFrame#card QLabel { background:transparent; }
                 QPushButton { border:1px solid #365168; padding:11px 19px; border-radius:6px; background:#17283a; }
-                QPushButton:hover { background:#203a50; border-color:#00b7cd; }
-                QPushButton#primary { color:#001820; background:#00cfe4; border:1px solid #00cfe4; font-weight:700; }
-                QPushButton#primary:hover { background:#3ae4ef; }
+                QPushButton:hover { background:#30343a; border-color:#ffffff; }
+                QPushButton#primary { color:#101010; background:#ffffff; border:1px solid #ffffff; font-weight:600; }
+                QPushButton#primary:hover { background:#dddddd; }
+                QComboBox { background:#101010; color:#ffffff; padding:8px; border:1px solid #777777; }
                 QPushButton:disabled { color:#586c80; background:#122031; border-color:#233346; }
                 QScrollArea { border:0; }
                 QScrollBar:vertical { background:#0c1522; width:10px; }
@@ -167,7 +187,8 @@ def build_window(info, *, start_hardware=True):
                                             Qt.TransformationMode.SmoothTransformation))
             logo.setAlignment(Qt.AlignmentFlag.AlignLeft)
             rail.addWidget(logo)
-            brand = QLabel("KythOS\nKernal")
+            brand = QLabel(TITLE + "\nhttps://kythos.ai")
+            brand.setWordWrap(True)
             brand.setObjectName("brand")
             rail.addWidget(brand)
             rail.addSpacing(35)
@@ -306,9 +327,19 @@ def build_window(info, *, start_hardware=True):
                       "Back up any files you want to keep before changing a disk.")
             self.card(layout, "Account & access", "Choose your account and a nonempty password in the user step. "
                       "There is no added password-complexity policy. SSH password authentication is supported; "
-                      "the common-base firewall restricts incoming connections until you allow the required services.")
+                      "SSH starts automatically after installation and the firewall permits its default port. "
+                      "Use your installed account when connecting remotely.")
             self.card(layout, "FIDO security keys", "FIDO security-key login can be configured after installation. "
                       "Keep your account password and recovery access available during enrollment.")
+            self.card(layout, "Terminal appearance", "Choose the installed system's default terminal appearance. "
+                      "These original palettes can be changed later with kythos-theme. "
+                      "White text on a dark background is the default.")
+            self.terminal_theme = QComboBox()
+            self.terminal_theme.setAccessibleName("Terminal appearance")
+            for name, theme in json.loads(THEME_DATA.read_text(encoding="utf-8")).items():
+                self.terminal_theme.addItem(theme["label"], name)
+            self.terminal_theme.setCurrentIndex(self.terminal_theme.findData("dark"))
+            layout.addWidget(self.terminal_theme)
             self.card(layout, "Security & hardware", "The base includes audit logging, file-integrity checks, "
                       "AppArmor, and automatic security updates. Additional GPU drivers can be installed afterward. "
                       "FIPS validation and a full STIG assessment are not complete.")
@@ -418,6 +449,11 @@ def build_window(info, *, start_hardware=True):
                 self.change_page(1)
                 return
             if not info["live"] or self.installer.state() != QProcess.ProcessState.NotRunning:
+                return
+            try:
+                save_terminal_theme(self.terminal_theme.currentData())
+            except (OSError, ValueError):
+                self.status.setText("The terminal appearance preference could not be saved. Check your live-session home directory.")
                 return
             self.status.setText("Opening Calamares…")
             self.installer.start()

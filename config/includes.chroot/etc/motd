@@ -1,3 +1,8 @@
-KythOS Kernal 0.1.0
+KythOS Kernal[TM] 2027
+https://kythos.ai
+
+Derived from Debian. Debian and upstream copyright and license notices are
+available in /usr/share/doc/*/copyright.
 
 Run sudo kythos-security-status to inspect the security baseline.
+History: Up/Down, Ctrl+R search. Appearance: kythos-theme --list.

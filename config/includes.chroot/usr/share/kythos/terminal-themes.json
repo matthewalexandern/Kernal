@@ -1,0 +1,8 @@
+{
+  "dark": {"label": "Dark", "foreground": "#ffffff", "background": "#101010", "ansi_foreground": 37, "ansi_background": 40},
+  "light": {"label": "Light", "foreground": "#202020", "background": "#ffffff", "ansi_foreground": 30, "ansi_background": 47},
+  "monochrome": {"label": "Monochrome", "foreground": "#d0d0d0", "background": "#000000", "ansi_foreground": 37, "ansi_background": 40},
+  "blue": {"label": "Blue", "foreground": "#ffffff", "background": "#001f3f", "ansi_foreground": 37, "ansi_background": 40},
+  "teal": {"label": "Teal", "foreground": "#ffffff", "background": "#003333", "ansi_foreground": 37, "ansi_background": 40},
+  "high-contrast": {"label": "High contrast", "foreground": "#ffffff", "background": "#000000", "ansi_foreground": 37, "ansi_background": 40}
+}
