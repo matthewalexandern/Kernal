@@ -51,6 +51,14 @@ require_commands()
     done
 }
 
+read_live_pcr()
+{
+    awk -v wanted="$1" '
+        $1 == wanted ":" { print $2; exit }
+        $1 == wanted && $2 == ":" { print $3; exit }
+    '
+}
+
 check_boot_mounts()
 {
     test -d /boot || die '/boot is unavailable'
@@ -605,8 +613,7 @@ printf '%s\n' "$pcr_output"
 for measured_pcr in 4 7 8 9 14
 do
     pcr_value=$(printf '%s\n' "$pcr_output" \
-        | awk -v wanted="$measured_pcr" \
-            '$1 == wanted && $2 == ":" { print $3; exit }')
+        | read_live_pcr "$measured_pcr")
     pcr_hex=${pcr_value#0x}
     printf '%s\n' "$pcr_hex" | grep -Eq '^[0-9a-fA-F]{64}$' \
         || die "PCR $measured_pcr is unavailable in the SHA-256 bank"
@@ -637,8 +644,7 @@ do
     ' "$event_dump")
     replayed_hex=$(printf '%s\n' "${replayed_pcr#0x}" | tr 'A-F' 'a-f')
     live_pcr=$(printf '%s\n' "$pcr_output" \
-        | awk -v wanted="$measured_pcr" \
-            '$1 == wanted && $2 == ":" { print $3; exit }')
+        | read_live_pcr "$measured_pcr")
     live_hex=$(printf '%s\n' "${live_pcr#0x}" | tr 'A-F' 'a-f')
     printf '%s\n' "$replayed_hex" | grep -Eq '^[0-9a-f]{64}$' \
         || die "the event log cannot replay SHA-256 PCR $measured_pcr"

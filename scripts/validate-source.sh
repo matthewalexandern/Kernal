@@ -23,6 +23,7 @@ for script in \
     "$repo_root/scripts/build.sh" \
     "$repo_root/scripts/validate-source.sh" \
     "$repo_root/tests/test-recovery-topology.sh" \
+    "$repo_root/tests/test-tpm2-pcrread-parser.sh" \
     "$repo_root/config/hooks/live/005-add-grub2-source.hook.source" \
     "$repo_root/config/hooks/live/010-enable-security.hook.chroot" \
     "$repo_root/config/hooks/live/015-prepare-compliance.hook.chroot" \
@@ -323,6 +324,8 @@ check_contains "$tpm_enrollment" \
     'an unexpected boot passphrase prompt can indicate tampering'
 check_contains "$tpm_enrollment" \
     'do not run cryptsetup, systemd-cryptenroll, or Clevis mutations'
+"$repo_root/tests/test-tpm2-pcrread-parser.sh" \
+    || fail 'TPM2 PCR-read parser tests failed'
 test -s "$repo_root/config/includes.chroot/usr/local/libexec/kythos-recovery-topology.awk" \
     || fail 'recovery-storage topology policy is missing or empty'
 "$repo_root/tests/test-recovery-topology.sh" \
