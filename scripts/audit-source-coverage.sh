@@ -10,6 +10,8 @@ if [[ $(id -u) -ne 0 ]]; then
     printf '%s\n' 'Source coverage audit must run as root.' >&2
     exit 1
 fi
+architecture=${KYTHOS_ARCH:-$(dpkg --print-architecture)}
+case "$architecture" in amd64|arm64) ;; *) printf 'Unsupported audit architecture.\n' >&2; exit 1 ;; esac
 
 binary_iso=$(readlink -f -- "$1")
 source_iso=$(readlink -f -- "$2")
@@ -96,12 +98,12 @@ cmp -s "$notice_file" "$audit_root/installed-notice" || {
     exit 1
 }
 
-grep -Eq '^KythOS Kernal [^[:space:]]+ amd64 Binary$' \
+grep -Eq "^KythOS Kernal [^[:space:]]+ $architecture Binary$" \
     "$binary_mount/.disk/info" || {
     printf '%s\n' 'Binary ISO disk identity is not KythOS.' >&2
     exit 1
 }
-grep -Eq '^KythOS Kernal [^[:space:]]+ amd64 source$' \
+grep -Eq "^KythOS Kernal [^[:space:]]+ $architecture source$" \
     "$source_mount/.disk/info" || {
     printf '%s\n' 'Source ISO disk identity is not KythOS.' >&2
     exit 1
@@ -295,6 +297,7 @@ cp "$required_manifest" "$output_directory/required-source-tuples.tsv"
     printf 'binary_disk_info=%s\n' "$(cat "$binary_mount/.disk/info")"
     printf 'source_disk_info=%s\n' "$(cat "$source_mount/.disk/info")"
     printf 'build_id=%s\n' "$expected_build_id"
+    printf 'debian_architecture=%s\n' "$architecture"
     printf '%s\n' 'os_id=kythos'
     printf '%s\n' 'os_id_like=debian'
     printf '%s\n' 'dpkg_vendor=KythOS'

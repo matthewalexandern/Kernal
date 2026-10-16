@@ -11,8 +11,14 @@ The terminal suffix is the actual outer virtual console, such as `tty1` or
 using full-screen terminal applications leave the header available.
 
 The header and the hostname in the default Bash prompt use the same light
-periwinkle blue. The hostname remains the real machine name. The installer
-offers `KythOS` as its editable default; custom hostnames are preserved.
+periwinkle blue without requesting bold text. The theme uses the normal-blue
+palette entry and SGR34, so it works with 512-glyph console fonts that expose
+eight simultaneous text colors. The hostname remains the real machine name.
+The installer offers `KythOS` as its editable default; custom hostnames are
+preserved.
+
+The original text-console font is retained. The header and default prompt
+use regular weight, without a bold attribute.
 
 The original KythOS session wrapper uses a packaged tmux terminal viewport to
 reserve the row and report the remaining screen size correctly to programs.
@@ -40,6 +46,6 @@ Bash configuration can override the default prompt. The main files are:
 - `/usr/share/kythos/console-tmux.conf`
 
 Linux virtual consoles have a limited palette. The wrapper applies the
-per-console bright-blue theme entry `#9eafff`; it persists until that console's
+per-console normal-blue theme entry `#9eafff`; it persists until that console's
 palette is reset. Other consoles, global palette defaults and other palette
 entries are not modified. `KYTHOS_CONSOLE_COLOR=0` disables that theme update.

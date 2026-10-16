@@ -24,6 +24,8 @@ MARKER_TEXT = "KythOS Calamares target v1\n"
 MANIFEST = Path("/usr/share/kythos/installer-live-packages")
 BASE_ROOTS = Path("/usr/share/kythos/installer-base-package-roots")
 MANIFEST_FILES = (MANIFEST, BASE_ROOTS, Path("/usr/share/kythos/installer-live-package-roots"))
+ARCHITECTURE = json.loads(subprocess.check_output(
+    [str(Path(__file__).with_name("kythos-architecture"))], text=True))
 AUTOLOGIN_FILE = Path("/etc/systemd/system/getty@tty1.service.d/60-kythos-autologin.conf")
 LIVE_FILES = (
     "/etc/sudoers.d/kythos-live-installer",
@@ -46,13 +48,13 @@ LIVE_DIRS = ("/usr/share/kythos/live", "/etc/calamares", "/usr/lib/kythos/calama
 REQUIRED_PACKAGES = frozenset((
     "apt", "auditd", "apparmor", "apparmor-utils", "aide-common", "nftables",
     "systemd", "systemd-sysv", "sudo", "openssh-server", "network-manager",
-    "cryptsetup", "cryptsetup-initramfs", "initramfs-tools", "linux-image-amd64",
-    "linux-headers-amd64", "dkms", "mokutil", "keyutils", "clevis-initramfs",
-    "clevis-tpm2", "python3", "grub2-common", "grub-pc-bin",
-    "grub-efi-amd64-bin", "grub-efi-amd64-signed", "shim-signed", "efibootmgr",
+    "cryptsetup", "cryptsetup-initramfs", "initramfs-tools",
+    "dkms", "mokutil", "keyutils", "clevis-initramfs",
+    "clevis-tpm2", "python3", "grub2-common", "efibootmgr",
     "unattended-upgrades", "openssl-provider-fips", "debian-security-support",
     "needrestart", "debsums", "cron", "s-nail", "tmux",
-))
+)) | frozenset(name for name in ARCHITECTURE["packages"]
+               if name.startswith(("linux-image-", "linux-headers-", "grub-", "shim-")))
 PACKAGE_RE = re.compile(r"[a-z0-9][a-z0-9+.-]*(?::[a-z0-9][a-z0-9-]*)?\Z")
 APT_LIST_RE = re.compile(r"^[ \t]*deb(?:-src)?[ \t]+(?:\[[^\]\r\n]*\][ \t]+)?([^\s#]+)")
 APT_FIELD_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9-]*):[ \t]*(.*?)(\r?\n)?$")
@@ -105,6 +107,8 @@ def read_topology():
             not re.fullmatch(r"[a-zA-Z0-9_+-]+", data["root_filesystem"]) or
             not isinstance(data["crypt_mappings"], list) or not isinstance(data["swap_devices"], list)):
         raise ValueError("Invalid installer storage receipt.")
+    if data["firmware"] == "bios" and ARCHITECTURE["bios_target"] is None:
+        raise ValueError("This architecture requires UEFI installation.")
     names = set()
     for mapping in data["crypt_mappings"]:
         if (set(mapping) != {"name", "uuid", "early"} or type(mapping["early"]) is not bool or
@@ -289,7 +293,7 @@ def purge_live_packages():
     status = command(["/usr/bin/dpkg-query", "-W", "-f=${binary:Package}\t${db:Status-Status}\n"], capture=True)
     installed = {line.split("\t")[0]: line.split("\t")[1] for line in status.splitlines() if "\t" in line}
     present = [name for name in names if installed.get(name) in ("installed", "config-files") or
-               installed.get(name + ":amd64") in ("installed", "config-files")]
+               installed.get(name + ":" + ARCHITECTURE["architecture"]) in ("installed", "config-files")]
     if present:
         arguments = ["/usr/bin/apt-get", "-y", "--no-install-recommends", "purge", "--", *present]
         simulation = command([arguments[0], "-s", *arguments[1:]], capture=True)
@@ -435,7 +439,7 @@ def verify(data):
     for path in required_boot_files:
         if not Path(path).is_file() or not Path(path).stat().st_size:
             raise ValueError("A required installed boot configuration is missing.")
-    kernels = list(Path("/boot").glob("vmlinuz-*-amd64"))
+    kernels = list(Path("/boot").glob("vmlinuz-*-" + ARCHITECTURE["kernel_flavour"]))
     if not kernels or any(not Path(str(kernel).replace("vmlinuz-", "initrd.img-")).is_file() for kernel in kernels):
         raise ValueError("A packaged kernel and matching initramfs are required.")
     entries = [line.split() for line in Path("/etc/crypttab").read_text().splitlines()
@@ -467,10 +471,11 @@ def verify(data):
     if swap_devices != expected_swap:
         raise ValueError("The installed swap entries differ from the native partition selections.")
     if data["firmware"] == "efi":
-        shim = Path("/usr/lib/shim/shimx64.efi.signed").read_bytes()
-        grub = Path("/usr/lib/grub/x86_64-efi-signed/grubx64.efi.signed").read_bytes()
-        for relative, expected in (("kythos/shimx64.efi", shim), ("kythos/grubx64.efi", grub),
-                                   ("BOOT/BOOTX64.EFI", shim), ("BOOT/grubx64.efi", grub)):
+        suffix, platform = ARCHITECTURE["efi_suffix"], ARCHITECTURE["efi_target"]
+        shim = Path(f"/usr/lib/shim/shim{suffix}.efi.signed").read_bytes()
+        grub = Path(f"/usr/lib/grub/{platform}-signed/grub{suffix}.efi.signed").read_bytes()
+        for relative, expected in ((f"kythos/shim{suffix}.efi", shim), (f"kythos/grub{suffix}.efi", grub),
+                                   (f"BOOT/BOOT{suffix.upper()}.EFI", shim), (f"BOOT/grub{suffix}.efi", grub)):
             if Path("/boot/efi/EFI", relative).read_bytes() != expected:
                 raise ValueError("The installed EFI chain differs from the packaged signed files.")
     Path("/run/sshd").mkdir(mode=0o755, exist_ok=True)
@@ -483,6 +488,7 @@ def verify(data):
     if command(["/usr/bin/dpkg", "--audit"], capture=True).strip():
         raise ValueError("The target package database is not fully configured.")
     result = {"schema": 1, "installer": "Calamares", "product": "KythOS Kernal",
+              "architecture": ARCHITECTURE["architecture"],
               "version": "0.1.0", "firmware": data["firmware"], "root_encrypted": data["encrypted"], "swap": data["swap"],
               "local_tty1_autologin": data["autologin"],
               "bootloader_installed": data["install_bootloader"],

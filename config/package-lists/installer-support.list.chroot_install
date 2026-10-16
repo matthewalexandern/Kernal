@@ -1,9 +1,6 @@
-# Both boot platforms remain maintainable after the live GUI is removed.
+# The selected architecture's boot platforms remain maintainable after the GUI
+# is removed; their exact packages come from the shared architecture profile.
 grub2-common
-grub-pc-bin
-grub-efi-amd64-bin
-grub-efi-amd64-signed
-shim-signed
 efibootmgr
 os-prober
 keyutils

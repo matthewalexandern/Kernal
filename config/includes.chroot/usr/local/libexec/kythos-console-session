@@ -17,9 +17,9 @@ TMUX = '/usr/bin/tmux'
 CONFIG = '/usr/share/kythos/console-tmux.conf'
 SHELL = ('/bin/bash', '-l')
 RAW_REQUESTED = 'raw-console-requested'
-# Linux OSC P sets just this virtual console's bright-blue entry (hex c).
+# Linux OSC P sets just this virtual console's normal-blue entry (hex 4).
 # PIO_CMAP is deliberately not used: it changes global defaults and other VTs.
-PERIWINKLE_ESCAPE = b'\x1b]Pc9eafff'
+PERIWINKLE_ESCAPE = b'\x1b]P49eafff'
 LOCAL_TTY = re.compile(r'/dev/tty[1-9][0-9]*\Z')
 
 

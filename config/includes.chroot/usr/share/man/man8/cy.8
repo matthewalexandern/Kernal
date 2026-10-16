@@ -1,0 +1,78 @@
+.TH CY 8 "2027" "KythOS Kernal" "System Administration"
+.SH NAME
+cy \- manage authenticated distribution packages
+.SH SYNOPSIS
+.B cy
+.RI [ options ] " command " [ arguments ]
+.SH DESCRIPTION
+cy is the KythOS Kernal operator interface to the packaged APT backend.
+Commands that change system packages require an authenticated administrator.
+Repository identities and backend version information retain their provenance.
+.SH COMMANDS
+.TP
+.B update
+Refresh signed repository package indexes.
+.TP
+.B upgrade
+Install available package upgrades.
+.TP
+.B full-upgrade
+Upgrade packages, allowing the backend to resolve dependency changes.
+.TP
+.B install
+Install named repository packages and their dependencies.
+.TP
+.B remove
+Remove named packages.
+.TP
+.B autoremove
+Review and remove dependencies the backend considers no longer required.
+.TP
+.B search
+Find packages by words in repository metadata.
+.TP
+.B show
+Read repository metadata for a package.
+.TP
+.B list
+List package records. Use --installed or --upgradable to narrow the list.
+.TP
+.B help
+Show KythOS command examples.
+.SH OPTIONS
+.TP
+.B --help
+Show KythOS command examples.
+.TP
+.B --version
+Report the packaged backend version and provenance.
+.TP
+.B --simulate
+Preview an action using the backend's simulation mode.
+.TP
+.B --assume-yes
+Supply the backend's affirmative-answer option.
+.TP
+.B --quiet
+Request quieter backend output.
+.TP
+.B --installed
+Limit list output to installed packages.
+.TP
+.B --upgradable
+Limit list output to packages with available upgrades.
+.SH NOTES
+cy blocks configuration injection, package-authentication bypasses, and local
+package or URI operands. The ordinary packaged backend remains available for
+compatibility and administrative workflows outside this interface.
+Inspect a proposed transaction before accepting package removals.
+.SH EXAMPLES
+.nf
+sudo cy update
+cy list --upgradable
+sudo cy install package-name
+cy --simulate autoremove
+.fi
+.SH SEE ALSO
+.BR apt (8),
+.BR kythos-help (1)

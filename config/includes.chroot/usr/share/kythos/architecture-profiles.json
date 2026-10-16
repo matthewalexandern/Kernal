@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "architectures": {
+    "amd64": {
+      "kernel_flavour": "amd64",
+      "bootloaders": "syslinux,grub-efi",
+      "efi_target": "x86_64-efi",
+      "efi_suffix": "x64",
+      "bios_target": "i386-pc",
+      "packages": [
+        "linux-image-amd64", "linux-headers-amd64",
+        "amd64-microcode", "intel-microcode", "fwupd-amd64-signed",
+        "grub-pc-bin", "grub-efi-amd64-bin", "grub-efi-amd64-signed", "shim-signed"
+      ]
+    },
+    "arm64": {
+      "kernel_flavour": "arm64",
+      "bootloaders": "grub-efi",
+      "efi_target": "arm64-efi",
+      "efi_suffix": "aa64",
+      "bios_target": null,
+      "packages": [
+        "linux-image-arm64", "linux-headers-arm64", "fwupd-arm64-signed",
+        "grub-efi-arm64-bin", "grub-efi-arm64-signed", "shim-signed"
+      ]
+    }
+  }
+}

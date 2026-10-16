@@ -1,8 +1,7 @@
-# CPU security updates for both amd64 vendor families.
-amd64-microcode
-intel-microcode
+# Architecture-specific CPU updates and signed firmware tools are generated
+# from the same architecture profile as the stock kernel and EFI packages.
 
-# Broad redistributable firmware coverage for the amd64 base. Automatic
+# Broad redistributable firmware coverage for the shared base. Automatic
 # live-root discovery is disabled because it also selects b43 installers whose
 # extracted payloads cannot be redistributed. Packages that require each end
 # user to accept a separate EULA are left to the interactive installer or a
@@ -47,13 +46,11 @@ wireless-regdb
 bluez
 rfkill
 fwupd
-fwupd-amd64-signed
 mokutil
 
 # Keep the base ready for a matching Debian-packaged NVIDIA module. The actual
 # driver and its version-matched GSP firmware remain hardware/edition selected;
 # installing them universally would choose the wrong family on some GPUs.
-linux-headers-amd64
 dkms
 nvidia-detect
 

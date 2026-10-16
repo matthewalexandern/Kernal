@@ -22,6 +22,20 @@ if [[ ${ID:-} != debian || ${VERSION_CODENAME:-} != trixie ]]; then
     exit 1
 fi
 
+architecture=${KYTHOS_ARCH:-amd64}
+case "$architecture" in
+    amd64|arm64) ;;
+    *) printf 'Unsupported build architecture: %s\n' "$architecture" >&2; exit 1 ;;
+esac
+if [[ $(dpkg --print-architecture) != "$architecture" ]]; then
+    printf 'Build %s inside a matching Debian guest; cross-architecture chroots are not accepted.\n' \
+        "$architecture" >&2
+    exit 1
+fi
+export KYTHOS_ARCH=$architecture
+profile_tool="$repo_root/config/includes.chroot/usr/local/libexec/kythos-architecture"
+"$profile_tool" --arch "$architecture" >/dev/null
+
 for command_name in lb debootstrap mksquashfs mount rsync unsquashfs xorriso; do
     command -v "$command_name" >/dev/null 2>&1 || {
         printf 'Missing build command: %s\n' "$command_name" >&2
@@ -129,6 +143,10 @@ if [[ -n ${KYTHOS_CACHE_SEED:-} ]]; then
         [[ -d $cache_seed/$cache_directory ]] || continue
         verify_protected_directory_chain "$cache_seed/$cache_directory"
         while IFS= read -r -d '' cached_package; do
+            package_architecture=$(dpkg-deb -f "$cached_package" Architecture)
+            if [[ $package_architecture != all && $package_architecture != "$architecture" ]]; then
+                continue
+            fi
             cp -a --reflink=auto "$cached_package" \
                 "$build_root/cache/$cache_directory/"
         done < <(find "$cache_seed/$cache_directory" -maxdepth 1 \
@@ -157,6 +175,15 @@ chmod 0644 "$build_root/LICENSE" "$build_root/NOTICE" "$build_root/SNAPSHOT" "$b
 install -d -m 0755 "$build_root/config/includes.chroot/usr/share/kythos"
 install -m 0644 "$repo_root/VERSION" \
     "$build_root/config/includes.chroot/usr/share/kythos/version"
+printf '%s\n' "$architecture" \
+    > "$build_root/config/includes.chroot/usr/share/kythos/build-architecture"
+"$profile_tool" --arch "$architecture" \
+    > "$artifact_root/build-architecture-profile.json"
+"$profile_tool" --arch "$architecture" --packages \
+    > "$build_root/config/package-lists/architecture.list.chroot_install"
+chmod 0644 \
+    "$build_root/config/includes.chroot/usr/share/kythos/build-architecture" \
+    "$build_root/config/package-lists/architecture.list.chroot_install"
 # Record package roots before the chroot stage resolves the live-only
 # dependency closure. Priority-standard utilities are protected by that hook.
 for package_scope in live base; do
@@ -165,7 +192,7 @@ for package_scope in live base; do
         base) package_suffix=chroot_install ;;
     esac
     awk '!/^[[:space:]]*(#|!|$)/ { print $1 }' \
-        "$repo_root"/config/package-lists/*.list."$package_suffix" \
+        "$build_root"/config/package-lists/*.list."$package_suffix" \
         | LC_ALL=C sort -u \
         > "$build_root/config/includes.chroot/usr/share/kythos/installer-$package_scope-package-roots"
     chmod 0644 "$build_root/config/includes.chroot/usr/share/kythos/installer-$package_scope-package-roots"
@@ -198,6 +225,8 @@ required_source_recipe_files=(
     assets/branding/kythos-mark-cyan-source.png
     scripts/render-branding.py
     scripts/build.sh
+    scripts/build-arm64.sh
+    scripts/check-multiarch-pair.py
     scripts/build-calamares-partition.sh
     scripts/validate-source.sh
     patches/calamares/0001-validate-proposed-boot-and-swap-layout.patch
@@ -207,6 +236,9 @@ required_source_recipe_files=(
     NOTICE
     docs/BRANDING.md
     docs/NETWORKING.md
+    docs/ARM64.md
+    config/includes.chroot/usr/share/kythos/architecture-profiles.json
+    config/includes.chroot/usr/local/libexec/kythos-architecture
     docs/COMMAND-SUGGESTIONS.md
     docs/CONSOLE.md
     config/includes.installer/etc/lsb-release
@@ -225,6 +257,10 @@ required_source_recipe_files=(
     config/includes.chroot/usr/share/kythos/console-tmux.conf
     config/includes.chroot/etc/profile.d/60-kythos-suggestions.sh
     config/includes.chroot/usr/local/libexec/kythos-command-suggest
+    config/includes.chroot/usr/local/bin/kythos-help
+    config/includes.chroot/etc/apt/apt.conf.d/91-kythos-command-index
+    config/includes.chroot/usr/share/man/man1/kythos-help.1
+    config/includes.chroot/usr/share/man/man8/cy.8
     config/includes.chroot/usr/share/kythos/command-intents.json
     tests/test-installer-branding.sh
     tests/test-login-branding.sh
@@ -235,7 +271,10 @@ required_source_recipe_files=(
     tests/test-hardware-status.py
     tests/test-cy-help.py
     tests/test-network-defaults.py
+    tests/test-architecture.py
+    tests/test-multiarch-pair.py
     tests/test-command-suggest.py
+    tests/test-command-index.py
     tests/test-command-suggestions-bash.py
     tests/test-console-header.py
     tests/calamares-storage-policy.cpp
@@ -355,6 +394,8 @@ install -m 0644 "$repo_root/patches/calamares/README.md" \
     printf 'source_git_commit=%s\n' "$git_commit"
     printf 'source_git_state=%s\n' "$git_state"
     printf 'debian_snapshot=%s\n' "$snapshot"
+    printf 'debian_architecture=%s\n' "$architecture"
+    printf 'builder_execution=%s\n' "${KYTHOS_BUILDER_EXECUTION:-unspecified}"
     printf 'snapshot_debian=%s\n' \
         "https://snapshot.debian.org/archive/debian/$snapshot/"
     printf 'snapshot_debian_security=%s\n' \
@@ -381,7 +422,7 @@ cp -a config "$artifact_root/live-build-config"
 
 lb build 2>&1 | tee "$artifact_root/build.log"
 
-expected_binary_iso="$build_root/${image_name}-amd64.hybrid.iso"
+expected_binary_iso="$build_root/${image_name}-${architecture}.hybrid.iso"
 expected_source_iso="$build_root/${image_name}-source.iso"
 for expected_iso in "$expected_binary_iso" "$expected_source_iso"; do
     if [[ ! -f $expected_iso ]]; then

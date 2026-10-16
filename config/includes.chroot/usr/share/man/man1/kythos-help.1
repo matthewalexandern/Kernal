@@ -1,0 +1,38 @@
+.TH KYTHOS-HELP 1 "2027" "KythOS Kernal" "User Commands"
+.SH NAME
+kythos-help \- inspect installed commands and their local documentation
+.SH SYNOPSIS
+.B kythos-help
+.RI command " [arguments]"
+.br
+.B kythos-help
+.RI "words describing a command"
+.SH DESCRIPTION
+Read the local command index to describe an installed executable, its documented
+options, and recognized command declarations. Search description words when a
+command name is not supplied.
+The inspected executable is never run and typed text is not sent to a service.
+.PP
+In the default interactive Bash configuration, F1 shows help for the current
+line while preserving that line. Bash builtins use Bash's own usage text.
+User aliases and functions retain their own completion and execution behavior.
+.PP
+Tab requests a recognized typo or phrase suggestion. A second Tab or Right
+Arrow copies a pending suggestion to the line. Ordinary Enter executes it.
+Native shell completion remains available when no suggestion applies.
+.SH INDEX
+The system index is generated from installed executables and packaged manual
+pages and refreshed after package transactions. Newly installed executables
+are discovered from PATH without a manually maintained command-name list.
+Commands without packaged documentation remain usable through the shell;
+the helper reports the absence of metadata instead of inventing options.
+.SH EXAMPLES
+.nf
+kythos-help systemctl
+kythos-help list processes
+kythos-help tar
+.fi
+.SH SEE ALSO
+.BR bash (1),
+.BR man (1),
+.BR cy (8)

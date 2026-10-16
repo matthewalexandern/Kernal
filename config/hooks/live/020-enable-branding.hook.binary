@@ -3,4 +3,6 @@ set -eu
 umask 022
 
 version=$(cat ../VERSION)
-printf 'KythOS Kernal %s amd64 Binary\n' "$version" > .disk/info
+architecture=$(cat ../config/includes.chroot/usr/share/kythos/build-architecture)
+case "$architecture" in amd64|arm64) ;; *) exit 1 ;; esac
+printf 'KythOS Kernal %s %s Binary\n' "$version" "$architecture" > .disk/info

@@ -1,0 +1,3 @@
+// Index packaged manual pages as data after package changes.
+// An indexing failure must not fail an otherwise successful package transaction.
+DPkg::Post-Invoke { "/usr/local/libexec/kythos-command-suggest --refresh-index >/dev/null 2>&1 || true"; };

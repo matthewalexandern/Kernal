@@ -186,6 +186,33 @@ class BashSuggestionTests(unittest.TestCase):
         shell.send('abc\x01\x1b[C')
         self.assertEqual(shell.state(), ('abc', 1))
 
+    def test_f1_describes_any_installed_command_without_editing_or_running(self):
+        shell = self.shell()
+        (shell.bin / 'fresh-tool').symlink_to('fake-command')
+        line = 'fresh-tool --some-option exact-target'
+        shell.send(line + '\x1bOP')
+        output = shell.wait_for(b'fresh-tool - installed command')
+        self.assertIn(b'No packaged manual metadata', output + shell.read(0.1))
+        self.assertEqual(shell.state(), (line, len(line)))
+        self.assertEqual(shell.executions(), [])
+        shell.cancel()
+        shell.send('read -r exact_variable\x1b[[A')
+        shell.wait_for(b'read: read')
+        self.assertEqual(shell.state()[0], 'read -r exact_variable')
+        self.assertEqual(shell.executions(), [])
+
+    def test_f1_preserves_user_bindings_and_does_not_inspect_function_bodies(self):
+        shell = self.shell("bind '\"\\eOP\": \"user-f1\"'")
+        shell.send('\x1bOP')
+        self.assertEqual(shell.state()[0], 'user-f1')
+        shell.cancel()
+        shell.command('function private_fixture { ip must-not-run; }; alias fixture_alias="ip must-not-run"')
+        shell.send('private_fixture\x1b[[A')
+        output = shell.wait_for(b'private_fixture is a shell function.')
+        self.assertNotIn(b'must-not-run', output)
+        self.assertEqual(shell.state()[0], 'private_fixture')
+        self.assertEqual(shell.executions(), [])
+
     def test_filename_and_programmable_completion_use_native_tab(self):
         shell = self.shell()
         (shell.directory / 'unique-completion-target').touch()

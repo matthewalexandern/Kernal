@@ -9,6 +9,9 @@ test -f "$profile"
 test -x "$engine"
 test -f "$catalogue"
 /bin/bash -n "$profile"
+# The same original engine indexes all installed executables and their local
+# manual metadata. No installed command is run to probe its --help behavior.
+"$engine" --refresh-index
 
 if ! grep -Fxq '# BEGIN KythOS command suggestions' /etc/bash.bashrc; then
     cat >> /etc/bash.bashrc <<'BASH'

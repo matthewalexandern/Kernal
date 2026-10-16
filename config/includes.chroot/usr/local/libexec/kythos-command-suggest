@@ -1,6 +1,7 @@
 #!/usr/bin/python3 -I
 """Local command proposals. Never execute a proposed command or read history."""
 
+import gzip
 import json
 import os
 from pathlib import Path
@@ -8,21 +9,27 @@ import re
 import shlex
 import stat
 import sys
+import tempfile
 import unicodedata
 
 
 CATALOGUE = Path('/usr/share/kythos/command-intents.json')
+COMMAND_INDEX = Path('/var/cache/kythos/command-index.json')
+MAN_ROOT = Path('/usr/share/man')
+MAX_MAN_BYTES = 2 * 1024 * 1024
+MAX_INDEX_BYTES = 64 * 1024 * 1024
 MAX_INPUT_BYTES = 4096
 MAX_TOKENS = 64
 MAX_TOKEN_LENGTH = 256
-MAX_PATH_DIRECTORIES = 32
-MAX_DIRECTORY_ENTRIES = 4096
-MAX_COMMANDS = 8192
+MAX_PATH_DIRECTORIES = 128
+MAX_DIRECTORY_ENTRIES = 65536
+MAX_COMMANDS = 65536
 SLOT = re.compile(r'^\{([a-z][a-z_]*)(\.\.\.)?\}$')
 USERNAME = re.compile(r'[A-Za-z_][A-Za-z0-9_.-]{0,31}\Z')
 PACKAGE = re.compile(r'[a-z0-9][a-z0-9+.-]*(?::[a-z0-9][a-z0-9-]*)?\Z')
 HOST = re.compile(r'(?:[A-Za-z_][A-Za-z0-9_.-]*@)?(?:[A-Za-z0-9][A-Za-z0-9_.-]*|\[[0-9A-Fa-f:]+\]|[0-9A-Fa-f:]+)\Z')
-COMMAND_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}\Z')
+COMMAND_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.+-]{0,254}\Z')
+OPTION_NAME = re.compile(r'(?:--?[A-Za-z0-9][A-Za-z0-9_-]*|-[?@#])\Z')
 UNSUPPORTED = frozenset(';|&<>`$(){}\\#!*?~')
 
 
@@ -35,7 +42,7 @@ def tokenize(phrase):
         phrase = phrase[:-1]
         if phrase.endswith('\r'):
             phrase = phrase[:-1]
-    if any(ord(c) < 32 and c != '\t' or ord(c) == 127 or c in '\u0085\u2028\u2029'
+    if any(unicodedata.category(c) == 'Cc' and c != '\t' or c in '\u2028\u2029'
            or unicodedata.category(c) == 'Cf'
            or c in UNSUPPORTED for c in phrase):
         raise ValueError('phrase contains unsupported shell syntax')
@@ -232,6 +239,38 @@ def discover_commands(path=None):
     return commands, True
 
 
+def resolve_command(name, path=None):
+    """Resolve actual PATH precedence, including relative entries, without exec."""
+    if not COMMAND_NAME.fullmatch(name):
+        return None
+    directories = (os.environ.get('PATH', '') if path is None else path).split(os.pathsep)
+    if len(directories) > MAX_PATH_DIRECTORIES:
+        return None
+    for directory in directories:
+        candidate = Path(directory or '.') / name
+        try:
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                return str(candidate.resolve(strict=True))
+        except (OSError, RuntimeError):
+            continue
+    return None
+
+
+def matching_metadata(name, index, path=None):
+    """A packaged manual may not describe a different executable shadowing it."""
+    record = index.get(name, {})
+    expected = record.get('executable')
+    if not expected or resolve_command(name, path) != expected:
+        return {}
+    if record.get('manual'):
+        try:
+            if not record.get('manual_file') or not Path(record['manual_file']).is_file():
+                return {}
+        except (OSError, RuntimeError):
+            return {}
+    return record
+
+
 def action_typo(catalogue, tokens, root):
     explicit_sudo = tokens[0] == 'sudo'
     argv = tokens[1:] if explicit_sudo else tokens
@@ -248,14 +287,358 @@ def action_typo(catalogue, tokens, root):
                     'message': 'More than one package action matches. Type the intended action explicitly.'}
         action = candidates[0]
         corrected = [argv[0], action, *argv[2:]]
-        if not root and (explicit_sudo or group['actions'][action]):
+        if explicit_sudo or not root and group['actions'][action]:
             corrected.insert(0, 'sudo')
         return {'kind': 'suggestion', 'command': shlex.join(corrected), 'intent': 'package-action-typo',
                 'message': 'Correct the package action only; keep every supplied argument unchanged.'}
     return None
 
 
-def suggest(phrase, catalogue, *, root=None, path=None):
+def plain_manual(text):
+    """Read roff as data. No formatter, command, include or macro is executed."""
+    text = re.sub(r'\\f(?:\[[^]\n]*\]|\([^\n]{2}|.)', '', text)
+    text = re.sub(r'\\s(?:[+-]?\d+|\[[^]\n]*\])', '', text)
+    text = text.replace('\\-', '-').replace('\\(em', '-').replace('\\(en', '-')
+    text = text.replace('\\&', '').replace('\\e', '\\').replace('\\~', ' ')
+    text = re.sub(r'^\.[A-Za-z][A-Za-z0-9]*\s*', '', text)
+    text = re.sub(r'\\\[[^]\n]*\]|\\\([^\n]{2}', ' ', text)
+    return ' '.join(''.join(c for c in text if unicodedata.category(c)
+                           not in ('Cc', 'Cf')).strip('"').split())
+
+
+def read_manual(path, root=MAN_ROOT, depth=0):
+    """Bounded packaged manuals, including data-only .so links within man root."""
+    try:
+        path, root = Path(path).resolve(), Path(root).resolve()
+        if depth > 4 or not path.is_relative_to(root) or not path.is_file():
+            return ''
+        opener = gzip.open if path.suffix == '.gz' else open
+        with opener(path, 'rb') as source:
+            raw = source.read(MAX_MAN_BYTES + 1)
+        if len(raw) > MAX_MAN_BYTES:
+            return ''
+        text = raw.decode('utf-8', errors='replace')
+        links = [line.split(None, 1)[1].strip() for line in text.splitlines()
+                 if line.startswith('.so ')]
+        if links:
+            # Only a pure man-page include is followed. Other roff remains data.
+            body = [line for line in text.splitlines() if line.strip() and not line.startswith('.\\"')]
+            if len(body) != 1 or len(links) != 1:
+                return text
+            target = root / links[0]
+            if not target.exists() and not str(target).endswith('.gz'):
+                target = Path(str(target) + '.gz')
+            return read_manual(target, root, depth + 1)
+        return text
+    except (OSError, EOFError, ValueError, RuntimeError):
+        return ''
+
+
+def manual_metadata(text, command=None):
+    """Extract declaration syntax as data; prose and examples are not a grammar."""
+    description, name_lines, options, actions = '', [], set(), set()
+    explicit_actions = set()
+    major = section = ''
+    awaiting_entry = option_entry = False
+    lines = text.splitlines()
+    formatting = ('.HP', '.sp', '.br', '.RS', '.RE', '.nf', '.fi', '.ad', '.na',
+                  '.PD', '.Vb', '.Ve', '.Bl', '.El', '.Xc', '.Pp')
+
+    def flags(value):
+        # Read only an already established declaration or synopsis. This regex
+        # is not applied to arbitrary prose, file names or roff layout options.
+        return {flag for flag in re.findall(r'(?<![A-Za-z0-9_-])(?:--?[A-Za-z0-9][A-Za-z0-9_-]*|-[?@#])', value)
+                if len(flag) <= MAX_TOKEN_LENGTH and OPTION_NAME.fullmatch(flag)}
+
+    def mdoc_flags(raw):
+        # Fl can be nested in .Op/.It and repeated without another leading dot.
+        # Preserve a documented bundle such as -dErx rather than inventing its
+        # component options or an argument arity.
+        return {'-' + value for value in re.findall(r'(?:^\.|\s)Fl\s+(-?[A-Za-z0-9][A-Za-z0-9_-]*|[?@#])', raw)
+                if len(value) < MAX_TOKEN_LENGTH}
+
+    for position, raw in enumerate(lines):
+        if raw.startswith(('.SH ', '.SS ', '.Sh ', '.Ss ')):
+            section = plain_manual(raw).upper()
+            if raw.startswith(('.SH ', '.Sh ')):
+                major = section
+            awaiting_entry = 'COMMAND' in section and not any(
+                word in section for word in ('PARSING', 'EXECUTION', 'SYNTAX'))
+            option_entry = False
+            continue
+        line = plain_manual(raw)
+        if raw.strip() in ('.PP', '.TP', '.TQ') or raw.startswith('.IP '):
+            option_entry = 'OPTION' in major
+            awaiting_entry = 'COMMAND' in section and not any(
+                word in section for word in ('PARSING', 'EXECUTION', 'SYNTAX'))
+        if major == 'NAME' and line and not raw.startswith('.\\"'):
+            if raw.startswith('.Nd '):
+                description = line
+            elif not raw.startswith('.') or raw.startswith(('.B ', '.BR ', '.Nm ')):
+                name_lines.append(line)
+        if not line or raw.startswith('.\\"'):
+            continue
+        macro = raw.split(None, 1)[0] if raw.startswith('.') else ''
+        is_layout = macro in formatting or macro.startswith('.\\')
+        in_synopsis = major == 'SYNOPSIS'
+        if in_synopsis and not is_layout:
+            if 'Fl ' in raw:
+                options.update(mdoc_flags(raw))
+            elif not raw.startswith('.') or macro in ('.B', '.BR', '.BI', '.RB', '.RI', '.IR', '.IB'):
+                options.update(flags(line))
+        # mdoc option declarations have explicit Fl tokens. Formatting such as
+        # .Bl -tag -width and prose references such as ssh-add -L are excluded.
+        if raw.startswith('.It ') and major in ('SYNOPSIS', 'OPTIONS', 'DESCRIPTION'):
+            options.update(mdoc_flags(raw))
+        if option_entry and not is_layout and raw.strip() not in ('.PP', '.TP', '.TQ'):
+            # A tag beginning with a flag is a declaration. A paragraph that
+            # merely mentions a flag somewhere in its prose is not.
+            payload = line.lstrip('"')
+            if payload.startswith('-'):
+                options.update(flags(payload))
+            option_entry = False
+        if raw.startswith(('.It ', '.IP ')) and 'COMMAND' in section:
+            awaiting_entry = True
+        mdoc_entry = raw.startswith(('.It Ic ', '.It Xo Ic ', '.It Cm ', '.It Xo Cm '))
+        if mdoc_entry and 'COMMAND' not in section:
+            # Some mdoc manuals put command declarations in topical chapters.
+            # Accept a bounded syntax block with its own Fl options or explicit
+            # command alias, but never style/option value lists. A declaration
+            # without enough evidence remains available only in the full man.
+            block = []
+            for following in lines[position + 1:position + 33]:
+                if following.startswith(('.It ', '.Sh ', '.Ss ', '.SH ', '.SS ')):
+                    break
+                block.append(following)
+                if following == '.Xc':
+                    continue
+                if not following.startswith('.'):
+                    break
+            syntax = '\n'.join(block)
+            excluded = any(word in section for word in ('STYLE', 'FORMAT', 'ENVIRONMENT', 'TERMINFO'))
+            awaiting_entry = not excluded and bool(re.search(r'(?:^|\n)\.Op Fl\s|alias:\s+Ic\s', syntax))
+        if not awaiting_entry or is_layout or raw.strip() in ('.PP', '.TP', '.TQ'):
+            continue
+        # Only bold declarations or explicit mdoc command tokens are eligible.
+        if raw.startswith('.') and macro not in ('.B', '.BR', '.BI', '.IP', '.It', '.Ic'):
+            continue
+        declared = [plain_manual(value) for value in re.findall(r'\\fB(.+?)\\f[RP]', raw)]
+        if macro in ('.B', '.BR', '.BI'):
+            declared.append(line.split()[0].strip('"'))
+        mdoc = re.match(r'^\.It (?:Xo )?(?:Cm|Ic)\s+([^\s,]+)', raw)
+        if mdoc:
+            declared.append(mdoc[1])
+        if macro == '.Ic':
+            declared.append(line)
+        for entry in declared[:1]:
+            pieces = entry.strip('"').split()
+            if command and len(pieces) > 1 and pieces[0] == command:
+                pieces = pieces[1:]
+                if COMMAND_NAME.fullmatch(pieces[0]) and not pieces[0].startswith('-'):
+                    explicit_actions.add(pieces[0])
+            if pieces:
+                candidate = pieces[0]
+                if COMMAND_NAME.fullmatch(candidate) and not candidate.startswith('-') and candidate != command:
+                    actions.add(candidate)
+        if not raw.startswith('.') or declared:
+            awaiting_entry = False
+    if not description:
+        name = ' '.join(name_lines)
+        description = name.split(' - ', 1)[1] if ' - ' in name else ''
+    return {'description': description[:240], 'options': sorted(options)[:512],
+            'actions': sorted(explicit_actions or actions)[:256]}
+
+
+def build_command_index(commands, root=MAN_ROOT, path=None):
+    root = Path(root)
+    manuals = {}
+    for section in ('1', '8', '6'):
+        directory = root / ('man' + section)
+        try:
+            with os.scandir(directory) as iterator:
+                paths = []
+                for entry in iterator:
+                    paths.append(Path(entry.path))
+                    if len(paths) > MAX_DIRECTORY_ENTRIES:
+                        break
+        except OSError:
+            continue
+        if len(paths) > MAX_DIRECTORY_ENTRIES:
+            continue
+        for manual in sorted(paths):
+            match = re.fullmatch(r'(.+)\.(' + section + r'[A-Za-z0-9]*)(?:\.gz)?', manual.name)
+            if match and match[1] in commands:
+                manuals.setdefault(match[1], []).append((manual, match[2]))
+    entries = {}
+    for name in sorted(commands):
+        metadata = {'description': '', 'options': [], 'actions': []}
+        for manual, section in manuals.get(name, []):
+            text = read_manual(manual, root)
+            if text:
+                metadata = manual_metadata(text, name)
+                metadata['manual'] = name + '(' + section + ')'
+                metadata['manual_file'] = str(manual.absolute())
+                metadata['actions'] = sorted({action[len(name) + 1:] if action.startswith(name + '-') else action
+                                              for action in metadata['actions']})
+                break
+        metadata['executable'] = resolve_command(name, path)
+        entries[name] = metadata
+    return {'schema_version': 1, 'commands': entries}
+
+
+def load_command_index(path=COMMAND_INDEX):
+    try:
+        # A malformed FIFO or symlink must not block an interactive shell.
+        descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC)
+        with os.fdopen(descriptor, 'rb') as source:
+            info = os.fstat(source.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+                return {}
+            raw = source.read(MAX_INDEX_BYTES + 1)
+        if len(raw) > MAX_INDEX_BYTES:
+            return {}
+        value = json.loads(raw)
+        if not isinstance(value, dict) or value.get('schema_version') != 1 or not isinstance(value.get('commands'), dict):
+            return {}
+        entries = value['commands']
+        if len(entries) > MAX_COMMANDS:
+            return {}
+        for name, record in entries.items():
+            if not COMMAND_NAME.fullmatch(name) or not isinstance(record, dict):
+                return {}
+            description = record.get('description', '')
+            if (not isinstance(description, str) or len(description) > 240 or
+                    any(unicodedata.category(c) in ('Cc', 'Cf')
+                        for c in description)):
+                return {}
+            executable = record.get('executable')
+            if executable is not None and (not isinstance(executable, str) or
+                    len(executable) > MAX_INPUT_BYTES or not os.path.isabs(executable) or
+                    any(unicodedata.category(c) in ('Cc', 'Cf') for c in executable)):
+                return {}
+            manual = record.get('manual')
+            if manual is not None and (not isinstance(manual, str) or
+                    not re.fullmatch(re.escape(name) + r'\([186][A-Za-z0-9]*\)', manual)):
+                return {}
+            manual_file = record.get('manual_file')
+            if manual_file is not None and (not isinstance(manual_file, str) or
+                    len(manual_file) > MAX_INPUT_BYTES or not os.path.isabs(manual_file) or
+                    any(unicodedata.category(c) in ('Cc', 'Cf') for c in manual_file)):
+                return {}
+            for key, maximum, pattern in (('options', 512, OPTION_NAME),
+                                          ('actions', 256, COMMAND_NAME)):
+                items = record.get(key, [])
+                if (not isinstance(items, list) or len(items) > maximum or
+                        any(not isinstance(item, str) or len(item) > MAX_TOKEN_LENGTH or
+                            not re.fullmatch(pattern, item) for item in items)):
+                    return {}
+        return entries
+    except (OSError, ValueError, TypeError, RecursionError):
+        return {}
+
+
+def refresh_command_index():
+    if os.geteuid() != 0:
+        raise ValueError('refreshing the system command index requires root')
+    system_path = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+    commands, complete = discover_commands(system_path)
+    if not complete:
+        raise ValueError('the executable inventory exceeds its bounds')
+    index = build_command_index(commands, path=system_path)
+    payload = json.dumps(index, ensure_ascii=True, sort_keys=True, separators=(',', ':')) + '\n'
+    if len(payload.encode('utf-8')) > MAX_INDEX_BYTES:
+        raise ValueError('the documented command index exceeds its bounds')
+    COMMAND_INDEX.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
+    parent = COMMAND_INDEX.parent.lstat()
+    if not stat.S_ISDIR(parent.st_mode) or parent.st_uid != 0 or parent.st_mode & 0o022:
+        raise ValueError('the system command cache is not root controlled')
+    descriptor, temporary = tempfile.mkstemp(prefix='.command-index-', dir=COMMAND_INDEX.parent)
+    try:
+        with os.fdopen(descriptor, 'w') as destination:
+            destination.write(payload)
+            destination.flush()
+            os.fsync(destination.fileno())
+            os.fchmod(destination.fileno(), 0o644)
+        os.replace(temporary, COMMAND_INDEX)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+    return index
+
+
+def documented_typo(tokens, commands, index, path=None):
+    offset = 1 if tokens[0] == 'sudo' else 0
+    if len(tokens) <= offset + 1 or tokens[offset] not in commands:
+        return None
+    # shlex deliberately does not implement shell glob expansion. Requoting a
+    # bracket pattern as a literal while correcting another word changes argv.
+    if any('[' in token or ']' in token for token in tokens[offset + 1:]):
+        return None
+    record = matching_metadata(tokens[offset], index, path)
+    argv = tokens.copy()
+    # End-of-options and literal values stay under the command's own parser.
+    end = argv.index('--', offset + 1) if '--' in argv[offset + 1:] else len(argv)
+    unknown = [(i, arg.partition('=')[0]) for i, arg in enumerate(argv[offset + 1:end], offset + 1)
+               if arg.startswith('--') and len(arg.partition('=')[0]) >= 5 and
+               arg.partition('=')[0] not in record.get('options', [])]
+    # Without a full command-specific argument grammar, a later --word might
+    # be the value of --regexp/--output/etc. Only the first argument is eligible.
+    if len(unknown) == 1 and unknown[0][0] == offset + 1:
+        position, actual = unknown[0]
+        candidates = [option for option in record.get('options', [])
+                      if option.startswith(actual) or one_edit(actual, option) == 1]
+        if len(candidates) == 1:
+            _, separator, value = argv[position].partition('=')
+            argv[position] = candidates[0] + (separator + value if separator else '')
+            return {'kind': 'suggestion', 'command': shlex.join(argv), 'intent': 'documented-option',
+                    'message': 'Use a flag documented by this installed command; preserve supplied values.'}
+    if (len(argv) > offset + 1 and not argv[offset + 1].startswith('-') and
+            len(argv[offset + 1]) >= 4 and argv[offset + 1] not in record.get('actions', [])):
+        actual = argv[offset + 1]
+        candidates = [action for action in record.get('actions', []) if one_edit(actual, action) == 1]
+        if len(candidates) == 1:
+            argv[offset + 1] = candidates[0]
+            return {'kind': 'suggestion', 'command': shlex.join(argv), 'intent': 'documented-subcommand',
+                    'message': 'Use a subcommand documented by this installed command; preserve all targets.'}
+    return None
+
+
+def command_help(phrase, *, path=None, index=None):
+    tokens = tokenize(phrase)
+    commands, complete = discover_commands(path)
+    index = load_command_index() if index is None else index
+    if not complete:
+        return 'Command discovery exceeded its bounds; native shell completion remains available.'
+    offset = 1 if tokens and tokens[0] == 'sudo' else 0
+    if len(tokens) > offset and tokens[offset] in commands:
+        name = tokens[offset]
+        record = matching_metadata(name, index, path)
+        lines = [name + (' - ' + record['description'] if record.get('description') else ' - installed command')]
+        for label, key in (('Subcommands', 'actions'), ('Options', 'options')):
+            values = record.get(key, [])
+            if values:
+                lines.append(label + ': ' + ' '.join(values[:18]) + (' ...' if len(values) > 18 else ''))
+        lines.append('Tab: native completion. ' +
+                     ('Full local manual: man ' + name if record.get('manual') else
+                      'No packaged manual metadata is available for this command.'))
+        return '\n'.join(lines)
+    words = {word.casefold() for word in tokens if len(word) >= 3 and
+             word.casefold() not in {'the', 'how', 'can', 'with', 'for', 'and', 'show', 'please'}}
+    ranked = []
+    for name in commands:
+        record = matching_metadata(name, index, path)
+        corpus = set(re.findall(r'[a-z0-9]+', (name + ' ' + record.get('description', '')).casefold()))
+        score = len(words & corpus)
+        if score:
+            ranked.append((score, name, record.get('description', '')))
+    ranked.sort(key=lambda item: (-item[0], item[1]))
+    if not words or not ranked:
+        return 'Type a command and press F1 for local options, or use kythos-help with command-description words.'
+    return 'Local command matches (review their manuals):\n' + '\n'.join(
+        '  ' + name + (' - ' + description if description else '') for _, name, description in ranked[:6])
+
+
+def suggest(phrase, catalogue, *, root=None, path=None, index=None):
     tokens = tokenize(phrase)
     if not tokens:
         return None
@@ -267,40 +650,60 @@ def suggest(phrase, catalogue, *, root=None, path=None):
     if result is not None:
         return result
     commands, complete = discover_commands(path)
-    # An exact existing command never receives generic fuzzy reinterpretation.
-    if tokens[0] in commands or not complete:
+    if not complete:
         return None
-    result = choose_intent(catalogue, tokens, root, fuzzy=True)
+    result = documented_typo(tokens, commands, load_command_index() if index is None else index, path)
     if result is not None:
         return result
-    if len(tokens[0]) < 4 or not COMMAND_NAME.fullmatch(tokens[0]):
+    # An exact command keeps its semantics; only documented flag/action typos
+    # above are eligible. File names and unknown argument values stay untouched.
+    offset = 1 if tokens[0] == 'sudo' and len(tokens) > 1 and not tokens[1].startswith('-') else 0
+    if tokens[offset] in commands or resolve_command(tokens[offset], path) is not None:
+        return None
+    result = choose_intent(catalogue, tokens, root, fuzzy=True) if offset == 0 else None
+    if result is not None:
+        return result
+    if len(tokens[offset]) < 4 or not COMMAND_NAME.fullmatch(tokens[offset]):
         return None
     # Shell glob expansion belongs to Bash. Quoting a bracket expression here
     # could silently change its meaning. Explicit IPv6 host slots above remain
     # available because their intended literal argument is known.
-    if any('[' in token or ']' in token for token in tokens[1:]):
+    if any('[' in token or ']' in token for token in tokens[offset + 1:]):
         return None
-    candidates = sorted(c for c in commands if one_edit(tokens[0], c) == 1)
+    candidates = sorted(c for c in commands if one_edit(tokens[offset], c) == 1)
     if not candidates:
         return None
     if len(candidates) > 1:
         return {'kind': 'ambiguous', 'command': None, 'intent': 'ambiguous-command-typo',
                 'message': 'More than one executable matches this command. Type its full name.'}
-    return {'kind': 'suggestion', 'command': shlex.join([candidates[0], *tokens[1:]]),
+    directories = (os.environ.get('PATH', '') if path is None else path).split(os.pathsep)
+    absolute_path = os.pathsep.join(directory for directory in directories if os.path.isabs(directory))
+    if resolve_command(candidates[0], path) != resolve_command(candidates[0], absolute_path):
+        return None
+    corrected = tokens.copy()
+    corrected[offset] = candidates[0]
+    return {'kind': 'suggestion', 'command': shlex.join(corrected),
             'message': 'Correct the executable name only; keep every supplied argument unchanged.',
             'intent': 'command-typo'}
 
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
-    if argv not in (['--json'], ['--shell']):
-        print('Usage: kythos-command-suggest --json | --shell < single-phrase', file=sys.stderr)
+    if argv not in (['--json'], ['--shell'], ['--help-line'], ['--refresh-index']):
+        print('Usage: kythos-command-suggest --json | --shell | --help-line < command-line; --refresh-index', file=sys.stderr)
         return 2
     try:
+        if argv == ['--refresh-index']:
+            value = refresh_command_index()
+            print('KythOS command index: ' + str(len(value['commands'])) + ' installed executables.')
+            return 0
         raw = sys.stdin.buffer.read(MAX_INPUT_BYTES + 1)
         if len(raw) > MAX_INPUT_BYTES:
             raise ValueError('phrase is too long')
         phrase = raw.decode('utf-8', errors='strict')
+        if argv == ['--help-line']:
+            print(command_help(phrase))
+            return 0
         result = suggest(phrase, load_catalogue())
     except (ValueError, OSError, KeyError, TypeError) as exc:
         # Error classes are useful; input and filesystem details stay private.

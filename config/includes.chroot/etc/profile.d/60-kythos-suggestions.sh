@@ -59,6 +59,15 @@ for __kythos_suggestions_key in '\e[C' '\eOC'; do
         __kythos_suggestions_keys+=("$__kythos_suggestions_key")
     fi
 done
+# F1 is local contextual help in Linux VTs and common terminal emulators.
+# Existing user bindings win; no command line is accepted or executed by F1.
+__kythos_suggestions_help_keys=()
+for __kythos_suggestions_key in '\e[[A' '\eOP' '\e[11~'; do
+    if ! __kythos_binding "$__kythos_suggestions_key"; then
+        __kythos_suggestions_keys+=("$__kythos_suggestions_key")
+        __kythos_suggestions_help_keys+=("$__kythos_suggestions_key")
+    fi
+done
 for __kythos_suggestions_key in "${__kythos_suggestions_keys[@]}"; do
     __kythos_binding "$__kythos_suggestions_key" || :
     __kythos_suggestions_original_type["$__kythos_suggestions_key"]=$__kythos_binding_type
@@ -117,6 +126,36 @@ __kythos_suggestions_pending() {
        $READLINE_POINT == "$__kythos_suggestions_point" &&
        ${HISTCMD:-0} == "$__kythos_suggestions_history" &&
        $READLINE_POINT == ${#READLINE_LINE} ]]
+}
+
+__kythos_suggestions_help() {
+    local first output kind
+    [[ ${KYTHOS_SUGGESTIONS:-1} != 0 ]] || return 0
+    __kythos_suggestions_clear
+    __kythos_suggestions_completed=0
+    if [[ $READLINE_LINE =~ ^[[:space:]]*([^[:space:]]+)([[:space:]]|$) ]]; then
+        first=${BASH_REMATCH[1]}
+        # Do not echo control/bidi bytes from unusual alias or function names.
+        # Other input goes through the engine's bounded literal parser below.
+        if [[ $first =~ ^[a-zA-Z0-9_+./:!%-]+$ || $first == '[' || $first == '[[' ||
+              $first == '{' || $first == '}' ]]; then
+            kind=$(builtin type -t -- "$first" 2>/dev/null) || kind=
+            case $kind in
+                builtin|keyword)
+                    if output=$(builtin help -s -- "$first" 2>/dev/null); then
+                        builtin printf '\n%s\n' "$output"
+                    fi
+                    return 0 ;;
+                alias|function)
+                    builtin printf '\n%s is a shell %s. Inspect it with: type %s\n' "$first" "$kind" "$first"
+                    return 0 ;;
+            esac
+        fi
+    fi
+    if output=$(builtin printf '%s\n' "$READLINE_LINE" |
+        /usr/local/libexec/kythos-command-suggest --help-line 2>/dev/null); then
+        builtin printf '\n%s\n' "$output"
+    fi
 }
 
 __kythos_suggestions_dispatch() {
@@ -225,6 +264,9 @@ builtin bind -m emacs-standard -x '"\e[99;1~": __kythos_suggestions_dispatch "\C
 builtin bind -m emacs-standard -x '"\e[99;2~": __kythos_suggestions_dispatch "\e[C"'
 builtin bind -m emacs-standard -x '"\e[99;3~": __kythos_suggestions_dispatch "\eOC"'
 builtin bind -m emacs-standard -x '"\e[99;4~": __kythos_suggestions_resume_key'
+for __kythos_suggestions_key in "${__kythos_suggestions_help_keys[@]}"; do
+    builtin bind -m emacs-standard -x "\"$__kythos_suggestions_key\": __kythos_suggestions_help"
+done
 for __kythos_suggestions_key in "${__kythos_suggestions_keys[@]}"; do
     __kythos_suggestions_macro "$__kythos_suggestions_key"
     __kythos_binding "$__kythos_suggestions_key" || :

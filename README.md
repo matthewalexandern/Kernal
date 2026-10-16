@@ -10,6 +10,11 @@ services come later. This pre-release line is a buildable prototype; a supported
 release also requires a signed KythOS APT repository and a versioned base-config
 package so installed systems receive KythOS policy updates.
 
+An experimental [ARM64 build path](docs/ARM64.md) uses the same source and
+common configuration, with architecture profiles selecting the stock kernel
+and boot packages. ARM64 and Parallels installation acceptance are still
+required before that image can be described as supported.
+
 ## Base guarantees
 
 - Stock signed kernel, complete modules, CPU microcode, and broad firmware
@@ -42,9 +47,12 @@ package so installed systems receive KythOS policy updates.
 - NVIDIA headers, DKMS, MOK, firmware, and detection tooling without forcing a
   single driver family onto incompatible GPUs.
 - Original local command suggestions for interactive Bash: request a preview
-  with Tab, accept it with Tab or Right Arrow, and execute with Enter.
+  with Tab, accept it with Tab or Right Arrow, and execute with Enter. Installed
+  command discovery and F1 contextual help use the system's local manuals;
+  normal Bash completion remains available.
 - A fixed local-console header and matching hostname color, with the command
   area sized separately so terminal applications retain their controls.
+- Regular, nonbold console styling with the original text-console font.
 - No installed desktop, hypervisor, AI runtime, proprietary NVIDIA driver, or
   custom kernel in the common base. The installation interface is removed
   from installed targets.

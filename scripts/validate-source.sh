@@ -45,6 +45,7 @@ for script in \
     "$repo_root/config/includes.installer/usr/lib/finish-install.d/93kythos-live-cleanup" \
     "$repo_root/config/hooks/live/090-record-manifest.hook.chroot" \
     "$repo_root/config/includes.chroot/usr/local/bin/cy" \
+    "$repo_root/config/includes.chroot/usr/local/bin/kythos-help" \
     "$repo_root/config/includes.chroot/usr/local/bin/kythos-installer" \
     "$repo_root/config/includes.chroot/usr/local/bin/kythos-install" \
     "$repo_root/config/includes.chroot/usr/local/libexec/kythos-live-guard" \
@@ -95,6 +96,8 @@ programs = [root / 'config/includes.chroot/usr/local/bin' / name
 programs.append(root / 'config/includes.chroot/usr/local/sbin/kythos-fido-login')
 programs.append(root / 'config/includes.chroot/usr/local/libexec/kythos-command-suggest')
 programs.append(root / 'config/includes.chroot/usr/local/libexec/kythos-console-session')
+programs.append(root / 'config/includes.chroot/usr/local/libexec/kythos-architecture')
+programs.append(root / 'scripts/check-multiarch-pair.py')
 programs += sorted((root / 'config/includes.chroot/usr/local/libexec').glob('kythos-calamares-*'))
 programs += sorted((root / 'config/includes.chroot/etc/calamares/modules').glob('kythos-*/*.py'))
 for program in programs:
@@ -103,7 +106,7 @@ for config in (root / 'config/includes.chroot/etc/calamares').rglob('*'):
     if config.suffix in ('.conf', '.desc') and not isinstance(yaml.safe_load(config.read_text()), dict):
         raise ValueError('Expected installer configuration map: ' + str(config))
 PY
-for installer_test in test-installer-removal-plan.py test-calamares-core.py test-setup-wizard.py test-fido2-login.py test-hardware-status.py test-cy-help.py test-network-defaults.py test-command-suggest.py test-command-suggestions-bash.py test-console-header.py; do
+for installer_test in test-installer-removal-plan.py test-calamares-core.py test-setup-wizard.py test-fido2-login.py test-hardware-status.py test-cy-help.py test-network-defaults.py test-command-suggest.py test-command-index.py test-command-suggestions-bash.py test-console-header.py; do
     PYTHONDONTWRITEBYTECODE=1 python3 "$repo_root/tests/$installer_test" \
         || fail "installer test failed: $installer_test"
 done
@@ -278,7 +281,7 @@ check_contains "$repo_root/NOTICE" \
 check_contains "$repo_root/scripts/build.sh" '"$repo_root/NOTICE" "$build_root/config/includes.binary/NOTICE"'
 check_contains "$repo_root/scripts/audit-source-coverage.sh" 'installed-notice'
 check_contains "$repo_root/config/hooks/live/020-enable-branding.hook.binary" \
-    'KythOS Kernal %s amd64 Binary'
+    'KythOS Kernal %s %s Binary'
 check_contains "$repo_root/config/hooks/live/020-enable-branding.hook.binary" \
     'version=$(cat ../VERSION)'
 check_contains "$repo_root/config/hooks/live/020-enable-branding.hook.binary" \
@@ -524,10 +527,14 @@ fi
 tmp_packages=$(mktemp)
 trap 'rm -f "$tmp_packages"' EXIT HUP INT TERM
 
-for list in "$repo_root"/config/package-lists/*.list.*
-do
-    awk '!/^[[:space:]]*(#|!|$)/ { print $1 }' "$list"
-done | LC_ALL=C sort > "$tmp_packages"
+{
+    for list in "$repo_root"/config/package-lists/*.list.*
+    do
+        awk '!/^[[:space:]]*(#|!|$)/ { print $1 }' "$list"
+    done
+    "$repo_root/config/includes.chroot/usr/local/libexec/kythos-architecture" \
+        --arch "${KYTHOS_ARCH:-$(dpkg --print-architecture)}" --packages
+} | LC_ALL=C sort > "$tmp_packages"
 
 duplicates=$(uniq -d "$tmp_packages" || true)
 test -z "$duplicates" || fail "duplicate explicit packages: $duplicates"
@@ -555,6 +562,9 @@ if test -r /etc/os-release; then
         done < "$tmp_packages"
     fi
 fi
+
+python3 "$repo_root/tests/test-architecture.py" || fail 'architecture profile validation failed'
+python3 "$repo_root/tests/test-multiarch-pair.py" || fail 'multiarch artifact-pair validation failed'
 
 test "$errors" -eq 0 || exit 1
 printf '%s\n' 'KythOS Kernal source validation passed.'

@@ -9,6 +9,12 @@ source validation checks the installer configuration and re-renders the
 checked-in branding in memory. Do not run the Ubuntu host's
 older live-build package against this recipe.
 
+The experimental [ARM64 pipeline](ARM64.md) uses the same source and package
+lists through a shared architecture profile. It runs the normal build inside
+a Debian 13 ARM64 guest with `scripts/build-arm64.sh`; the default entrypoint
+and profile remain amd64. Architecture-specific packages are generated while
+staging, and each artifact records its profile and exact source commit.
+
 Enable authenticated `deb-src` entries in the Debian guest and install the
 native partition module's build dependencies with `apt-get build-dep
 calamares`, plus `build-essential` and `patch`. The build fetches the exact

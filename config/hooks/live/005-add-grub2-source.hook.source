@@ -188,7 +188,9 @@ cp "$required_tuples" required-source-tuples.tsv
 cp ../LICENSE LICENSE
 cp ../NOTICE NOTICE
 version=$(cat ../VERSION)
-printf 'KythOS Kernal %s amd64 source\n' "$version" > .disk/info
+architecture=$(cat ../config/includes.chroot/usr/share/kythos/build-architecture)
+case "$architecture" in amd64|arm64) ;; *) exit 1 ;; esac
+printf 'KythOS Kernal %s %s source\n' "$version" "$architecture" > .disk/info
 
 # Parse live-build's report exactly. Its source_debian stage can append the
 # configured EFI selector `grub-efi` even when that metapackage is explicitly

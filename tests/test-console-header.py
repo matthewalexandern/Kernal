@@ -97,12 +97,12 @@ class ConsoleGuards(unittest.TestCase):
                                 capture_output=True, text=True, timeout=5,
                                 env=dict(os.environ, TERM='xterm', KYTHOS_CONSOLE_HEADER='0'))
         self.assertEqual(result.returncode, 0)
-        self.assertEqual(result.stdout, r'\u@\[\e[94m\]\h\[\e[0m\]:\w\$ ')
+        self.assertEqual(result.stdout, r'\u@\[\e[34m\]\h\[\e[0m\]:\w\$ ')
 
     def test_color_uses_only_per_vt_linux_sequence_with_opt_out(self):
         with mock.patch.object(console.os, 'write') as write:
             console.apply_console_color({})
-            write.assert_called_once_with(1, b'\x1b]Pc9eafff')
+            write.assert_called_once_with(1, b'\x1b]P49eafff')
             write.reset_mock()
             console.apply_console_color({'KYTHOS_CONSOLE_COLOR': '0'})
             write.assert_not_called()
@@ -272,7 +272,10 @@ class Screen:
         elif code == 'B': self.row += value
         elif code == 'C': self.column += value
         elif code == 'D': self.column -= value
-        elif code == 'r': self.top, self.bottom = value - 1, (n[1] or self.rows) - 1 if len(n) > 1 else self.rows - 1
+        elif code == 'r':
+            self.top, self.bottom = value - 1, (n[1] or self.rows) - 1 if len(n) > 1 else self.rows - 1
+            # Linux DECSTBM also homes the cursor (DECOM is off here).
+            self.row = self.column = 0
         elif code == 'J':
             if n[0] in (2, 3): self.lines = [[' '] * self.columns for _ in range(self.rows)]
             elif n[0] == 0:
@@ -380,8 +383,11 @@ class NativeViewport(unittest.TestCase):
         self.drain(0.1)
 
     def test_native_viewport_pins_header_through_clear_scroll_alternate_screen_and_resize(self):
-        self.assertIn(b'\x1b]Pc9eafff', self.stream)
+        self.assertIn(b'\x1b]P49eafff', self.stream)
+        self.assertIn(b'\x1b[34m', self.stream)
+        self.assertNotIn(b'\x1b[1m', self.stream, 'bright header must not request bold intensity')
         self.assert_header()
+        self.assertNotIn('bold', self.query('show-options', '-gv', 'status-style'))
         self.assertEqual(self.query('display-message', '-p', '#{pane_height}:#{client_height}'), '23:24')
         self.assertEqual(self.query('show-options', '-gv', 'status-position'), 'top')
         self.assertEqual(self.query('show-options', '-gv', 'prefix'), 'None')
@@ -412,6 +418,28 @@ class NativeViewport(unittest.TestCase):
         self.assertEqual(self.process.returncode, 0)
         self.assertEqual(termios.tcgetattr(self.slave), self.attributes)
         self.assertEqual(list(self.work.glob('kythos-console-*')), [])
+
+    def test_real_top_after_clear_and_scroll_preserves_header_during_updates_and_exit(self):
+        if not Path('/usr/bin/top').is_file():
+            self.skipTest('packaged procps top is unavailable')
+        self.screen.resize(50, 160)
+        fcntl.ioctl(self.slave, termios.TIOCSWINSZ, struct.pack('HHHH', 50, 160, 0, 0))
+        os.killpg(self.process.pid, signal.SIGWINCH)
+        self.wait_for(lambda: self.query('display-message', '-p', '#{pane_height}:#{client_height}') == '49:50')
+        for _ in range(2):
+            self.send("clear; for ((i=1;i<=140;i++)); do printf '%s\\n' \"$i\"; done; command -v top")
+            self.assert_header()
+            self.stream.clear()
+            os.write(self.master, b'/usr/bin/top -d 0.1\n')
+            self.wait_for(lambda: 'top - ' in self.query('capture-pane', '-p'))
+            self.assert_header()
+            for _refresh in range(4):
+                self.drain(0.1)
+                self.assert_header()
+            os.write(self.master, b'q')
+            self.wait_for(lambda: b'TEST> ' in self.stream)
+            self.drain(0.1)
+            self.assert_header()
 
     def test_signal_cleans_only_owned_server_and_restores_terminal(self):
         unrelated = str(self.work / 'unrelated.socket')

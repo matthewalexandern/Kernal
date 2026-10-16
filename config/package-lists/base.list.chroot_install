@@ -1,5 +1,4 @@
-# Debian stock kernel and complete packaged module set.
-linux-image-amd64
+# The stock kernel and complete modules come from the shared architecture profile.
 
 # Common command-line system functionality for every edition.
 systemd-sysv
@@ -12,5 +11,8 @@ iproute2
 iputils-ping
 pciutils
 usbutils
+bash-completion
+man-db
+manpages
 # A private terminal viewport keeps the local console header outside apps.
 tmux

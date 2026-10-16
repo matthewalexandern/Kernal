@@ -119,7 +119,7 @@ class Suggestions(unittest.TestCase):
         self.assertCommand('cy isntall nvdia-driver', ['sudo', 'cy', 'install', 'nvdia-driver'])
         self.assertCommand('cy searhc "network manager"', ['cy', 'search', 'network manager'])
         self.assertCommand('sudo cy udpate', ['sudo', 'cy', 'update'])
-        self.assertCommand('sudo cy udpate', ['cy', 'update'], root=True)
+        self.assertCommand('sudo cy udpate', ['sudo', 'cy', 'update'], root=True)
         self.assertIsNone(self.suggest('cy install nvdia-driver'))
         self.assertIsNone(self.suggest('cy update'))
         self.assertIsNone(self.suggest('cy unknown nvdia-driver'))
@@ -161,7 +161,8 @@ class Suggestions(unittest.TestCase):
         self.executable('systemctl')
         for phrase in ('systmctl status *.service', 'systmctl status unit?.service',
                        'systmctl status ~/unit', 'cy searhc nginx*',
-                       'search packages for abc\u202edef', 'sshcopyid host\u2066name'):
+                       'search packages for abc\u202edef', 'sshcopyid host\u2066name',
+                       'sshcopyid host\u009bname'):
             with self.assertRaises(ValueError, msg=phrase):
                 self.suggest(phrase)
         self.assertIsNone(self.suggest('systmctl status unit[12].service'))

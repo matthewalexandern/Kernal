@@ -15,6 +15,10 @@ if ! printf '%s\n' "$snapshot" | grep -Eq '^[0-9]{8}T[0-9]{6}Z$'; then
 fi
 snapshot_debian="https://snapshot.debian.org/archive/debian/$snapshot/"
 snapshot_security="https://snapshot.debian.org/archive/debian-security/$snapshot/"
+architecture=${KYTHOS_ARCH:-amd64}
+profile_tool="$repo_root/config/includes.chroot/usr/local/libexec/kythos-architecture"
+kernel_flavour=$("$profile_tool" --arch "$architecture" --get kernel_flavour)
+bootloaders=$("$profile_tool" --arch "$architecture" --get bootloaders)
 
 if test "$#" -ne 0; then
     echo 'Kernal base does not accept lb config overrides.' >&2
@@ -25,10 +29,10 @@ lb config noauto \
     --ignore-system-defaults \
     --mode debian \
     --distribution trixie \
-    --architecture amd64 \
+    --architecture "$architecture" \
     --system live \
     --binary-image iso-hybrid \
-    --bootloaders 'syslinux,grub-efi' \
+    --bootloaders "$bootloaders" \
     --archive-areas 'main contrib non-free non-free-firmware' \
     --apt-secure true \
     --apt-options '--yes -o Acquire::Check-Valid-Until=false' \
@@ -39,7 +43,7 @@ lb config noauto \
     --backports false \
     --firmware-chroot false \
     --firmware-binary true \
-    --linux-flavours amd64 \
+    --linux-flavours "$kernel_flavour" \
     --linux-packages linux-image \
     --debian-installer live \
     --debian-installer-distribution trixie \

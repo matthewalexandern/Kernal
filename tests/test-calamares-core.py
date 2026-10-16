@@ -130,13 +130,13 @@ class SignedBootTests(unittest.TestCase):
 
     def test_efi_installs_signed_shim_in_both_paths(self):
         arguments = grub.grub_arguments(["--target=x86_64-efi", "--efi-directory=/boot/efi",
-                                          "--bootloader-id=kythos", "--force"])
+                                          "--bootloader-id=kythos", "--force"], architecture="amd64")
         self.assertIn("--uefi-secure-boot", arguments)
         self.assertIn("--force-extra-removable", arguments)
         self.assertNotIn("--force", arguments)
 
     def test_bios_never_forces_blocklist_installation(self):
-        self.assertEqual(grub.grub_arguments(["--target=i386-pc", "--recheck", "--force", "/dev/nvme0n1"]),
+        self.assertEqual(grub.grub_arguments(["--target=i386-pc", "--recheck", "--force", "/dev/nvme0n1"], architecture="amd64"),
                          ["--target=i386-pc", "--recheck", "/dev/nvme0n1"])
 
     def test_no_arbitrary_boot_options_or_paths(self):
@@ -144,7 +144,18 @@ class SignedBootTests(unittest.TestCase):
                      ["--target=i386-pc", "--recheck", "--force", "--no-nvram"],
                      ["--target=i386-pc", "--recheck", "--force", "/dev/../etc/passwd"]):
             with self.subTest(args=args), self.assertRaises(ValueError):
-                grub.grub_arguments(args)
+                grub.grub_arguments(args, architecture="amd64")
+
+    def test_arm64_uses_signed_aa64_chain_and_rejects_bios(self):
+        arguments = grub.grub_arguments(["--target=arm64-efi", "--efi-directory=/boot/efi",
+                                          "--bootloader-id=kythos", "--force"], architecture="arm64")
+        self.assertEqual(arguments[0], "--target=arm64-efi")
+        self.assertIn("--uefi-secure-boot", arguments)
+        self.assertIn("--force-extra-removable", arguments)
+        for invalid in (["--target=i386-pc", "--recheck", "--force", "/dev/vda"],
+                        ["--target=x86_64-efi", "--efi-directory=/boot/efi", "--bootloader-id=kythos", "--force"]):
+            with self.assertRaises(ValueError):
+                grub.grub_arguments(invalid, architecture="arm64")
 
 
 class TargetTests(unittest.TestCase):
@@ -154,9 +165,9 @@ class TargetTests(unittest.TestCase):
         def command(arguments, capture=False):
             calls.append(arguments)
             if arguments[:2] == ["/usr/bin/dpkg-query", "-W"]:
-                return "qml6-module-qtqml-workerscript:amd64\tinstalled\n"
+                return "qml6-module-qtqml-workerscript:" + target.ARCHITECTURE["architecture"] + "\tinstalled\n"
             if arguments[:3] == ["/usr/bin/apt-get", "-s", "-y"]:
-                return "Purg qml6-module-qtqml-workerscript:amd64 [6.8.2]\n"
+                return "Purg qml6-module-qtqml-workerscript:" + target.ARCHITECTURE["architecture"] + " [6.8.2]\n"
             if arguments[:3] == ["/usr/bin/apt-get", "-y", "--no-install-recommends"]:
                 return None
             raise AssertionError("Unexpected package command: " + repr(arguments))

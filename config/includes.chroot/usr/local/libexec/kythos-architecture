@@ -1,0 +1,53 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: MIT
+"""Read the shared Debian architecture profile for builders and installers."""
+import argparse
+import json
+from pathlib import Path
+import re
+import subprocess
+
+PROFILE_FILE = Path(__file__).resolve().parents[2] / "share/kythos/architecture-profiles.json"
+
+
+def profile(architecture=None):
+    if architecture is None:
+        architecture = subprocess.check_output(["/usr/bin/dpkg", "--print-architecture"], text=True).strip()
+    document = json.loads(PROFILE_FILE.read_text())
+    if document.get("schema") != 1 or architecture not in ("amd64", "arm64"):
+        raise ValueError("Unsupported KythOS architecture.")
+    result = dict(document["architectures"][architecture], architecture=architecture)
+    expected = {"architecture", "kernel_flavour", "bootloaders", "efi_target", "efi_suffix", "bios_target", "packages"}
+    if set(result) != expected or result["kernel_flavour"] != architecture:
+        raise ValueError("Invalid architecture profile fields.")
+    if not isinstance(result["packages"], list) or not result["packages"] or any(
+            not isinstance(name, str) or not re.fullmatch(r"[a-z0-9][a-z0-9+.-]*", name)
+            for name in result["packages"]):
+        raise ValueError("Invalid architecture package names.")
+    if len(result["packages"]) != len(set(result["packages"])):
+        raise ValueError("Duplicate architecture package names.")
+    expected_boot = {"amd64": ("syslinux,grub-efi", "x86_64-efi", "x64", "i386-pc"),
+                     "arm64": ("grub-efi", "arm64-efi", "aa64", None)}
+    if tuple(result[name] for name in ("bootloaders", "efi_target", "efi_suffix", "bios_target")) != expected_boot[architecture]:
+        raise ValueError("Invalid architecture boot profile.")
+    return result
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--arch", choices=("amd64", "arm64"))
+    output = parser.add_mutually_exclusive_group()
+    output.add_argument("--get", choices=("architecture", "kernel_flavour", "bootloaders", "efi_target", "efi_suffix", "bios_target"))
+    output.add_argument("--packages", action="store_true")
+    arguments = parser.parse_args()
+    selected = profile(arguments.arch)
+    if arguments.get:
+        print(selected[arguments.get] or "")
+    elif arguments.packages:
+        print("\n".join(selected["packages"]))
+    else:
+        print(json.dumps(selected, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()
