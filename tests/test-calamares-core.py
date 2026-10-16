@@ -6,6 +6,7 @@ import importlib.util
 import json
 from pathlib import Path
 import stat
+import subprocess
 import sys
 sys.dont_write_bytecode = True
 import tempfile
@@ -147,6 +148,62 @@ class SignedBootTests(unittest.TestCase):
 
 
 class TargetTests(unittest.TestCase):
+    def test_actual_calamares_boolean_roundtrip_reaches_strict_receipt_reader(self):
+        # The real 3.3.14 QVariant bridge stores Python bools as integer 0/1.
+        # Exercise the producer, API representation, file writer and consumer.
+        def variant_roundtrip(value):
+            if type(value) is bool:
+                return int(value)
+            if isinstance(value, list):
+                return [variant_roundtrip(item) for item in value]
+            if isinstance(value, dict):
+                return {key: variant_roundtrip(item) for key, item in value.items()}
+            return value
+
+        for encrypted in (False, True):
+            with self.subTest(encrypted=encrypted), tempfile.TemporaryDirectory() as temporary:
+                root = {"mountPoint": "/", "fs": "ext4", "claimed": True}
+                if encrypted:
+                    root.update(luksMapperName="luks-root", luksUuid="8bba8ee0-153f-4d65-af3c-96d701ba76df")
+                partitions = [{"mountPoint": "/boot", "fs": "ext4", "claimed": True}, root]
+                topology = variant_roundtrip(dict(storage.topology(partitions, "bios"), swap="file"))
+                values = {"rootMountPoint": temporary, "kythosStorage": topology,
+                          "username": "tester", "autoLoginUser": None,
+                          "bootLoader": {"installPath": "/dev/vda"}}
+                receipts = []
+
+                def target_call(arguments):
+                    self.assertEqual(arguments, ["/usr/local/libexec/kythos-calamares-target", "configure"])
+                    metadata = types.SimpleNamespace(st_mode=stat.S_IFREG | 0o600, st_uid=0)
+                    with patch.object(target, "STATE_DIR", Path(temporary) / "var/lib/kythos"), \
+                            patch.object(Path, "lstat", return_value=metadata):
+                        receipts.append(target.read_topology())
+
+                api = types.SimpleNamespace(globalstorage=types.SimpleNamespace(value=values.get),
+                                            utils=types.SimpleNamespace(check_target_env_call=target_call))
+                with patch.object(stage, "libcalamares", api):
+                    self.assertIsNone(stage.run())
+                self.assertEqual(len(receipts), 1)
+                self.assertIs(receipts[0]["encrypted"], encrypted)
+                self.assertIs(receipts[0]["root_requires_crypto"], encrypted)
+                if encrypted:
+                    self.assertIs(receipts[0]["crypt_mappings"][0]["early"], True)
+                self.assertEqual(type(topology["encrypted"]), int)  # GS was not mutated.
+
+    def test_receipt_boolean_normalization_rejects_other_values(self):
+        for value in (None, "true", "0", 2, -1, [], {}, 0.0, 1.0):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                stage.storage_boolean(value)
+
+    def test_only_the_fixed_finalizer_diagnostic_is_presented(self):
+        error = subprocess.CalledProcessError(1, "fixed command", output=(
+            "SENSITIVE_TEST_VALUE_DO_NOT_SHOW\n"
+            "KythOS Kernal target finalization failed: Invalid installer storage receipt.\n"))
+        self.assertEqual(stage.finalizer_error(error),
+                         "KythOS Kernal target finalization failed: Invalid installer storage receipt.")
+        error.output = "SENSITIVE_TEST_VALUE_DO_NOT_SHOW"
+        self.assertEqual(stage.finalizer_error(error), "The target configuration command failed (exit status 1).")
+
     def test_refuses_running_host_context_before_any_file_mutation(self):
         identity = types.SimpleNamespace(st_dev=1, st_ino=2)
         with patch.object(target.os, "geteuid", return_value=0), patch.object(target.os, "stat", return_value=identity):
@@ -230,6 +287,10 @@ class TargetTests(unittest.TestCase):
         boot_layout = next(item for item in partition["partitionLayout"] if item["mountPoint"] == "/boot")
         self.assertEqual(boot_layout["minSize"], "1G")
         self.assertNotIn("maxSize", boot_layout)
+        self.assertFalse(partition["showNotEncryptedBootMessage"])
+        locale = yaml.safe_load((MODULES / "locale.conf").read_text())
+        self.assertEqual((locale["region"], locale["zone"]), ("Atlantic", "Reykjavik"))
+        self.assertFalse(locale["useSystemTimezone"])
 
 
 if __name__ == "__main__":

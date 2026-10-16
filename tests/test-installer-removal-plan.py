@@ -11,6 +11,8 @@ from unittest.mock import patch
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 HOOK = ROOT / "config/hooks/live/060-record-installer-packages.hook.chroot"
+FINISH_HOOK = (ROOT / "config/includes.installer/usr/lib/finish-install.d/"
+               "93kythos-live-cleanup")
 CODE = HOOK.read_text().split("python3 - <<'PY'\n", 1)[1].split("\nPY\n", 1)[0]
 BASE = "linux-image-amd64\npython3\nsudo\nsystemd-sysv\n"
 LIVE = "calamares\nqml6-module-qtquick\n"
@@ -83,6 +85,36 @@ class RemovalPlanTests(unittest.TestCase):
     def test_refuses_malformed_package_operand(self):
         with self.assertRaisesRegex(SystemExit, "malformed"):
             self.execute(plan=VALID_PLAN + "Purg ../../etc [1]\n")
+
+
+class FinishInstallHookTests(unittest.TestCase):
+    def test_advanced_installer_forces_terminal_default(self):
+        self.assertFalse(Path("/target/usr/local/libexec/kythos-calamares-clean-live-files").exists())
+        with tempfile.TemporaryDirectory(prefix="kythos-finish-hook-test-") as folder:
+            folder = Path(folder)
+            log = folder / "in-target.log"
+            fake = folder / "in-target"
+            fake.write_text(
+                "#!/bin/sh\n"
+                "set -eu\n"
+                "printf '%s\\n' \"$*\" >> \"$KYTHOS_TEST_LOG\"\n"
+                "if test \"$*\" = '/usr/bin/systemctl get-default'; then\n"
+                "    printf '%s\\n' multi-user.target\n"
+                "fi\n"
+            )
+            fake.chmod(0o755)
+            environment = {
+                "PATH": f"{folder}:/usr/bin:/bin",
+                "KYTHOS_TEST_LOG": str(log),
+            }
+            subprocess.run(["/bin/sh", str(FINISH_HOOK)], check=True, env=environment)
+            self.assertEqual(
+                log.read_text().splitlines(),
+                [
+                    "/usr/bin/systemctl set-default multi-user.target",
+                    "/usr/bin/systemctl get-default",
+                ],
+            )
 
 
 if __name__ == "__main__":

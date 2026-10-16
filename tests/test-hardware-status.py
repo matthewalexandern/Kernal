@@ -44,16 +44,23 @@ class HardwareFixtures(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             put(root, "/proc/sys/kernel/osrelease", "6.12-test\n")
-            pci = root / "sys/bus/pci/devices/0000:00:02.0"
+            pci = root / "sys/devices/pci0000:00/0000:00:02.0"
+            pci_link = root / "sys/bus/pci/devices/0000:00:02.0"
+            pci_link.parent.mkdir(parents=True)
+            pci.mkdir(parents=True)
+            pci_link.symlink_to(pci)
             put(root, str(pci.relative_to(root) / "class"), "0x030000")
             put(root, str(pci.relative_to(root) / "vendor"), "0x1af4")
             put(root, str(pci.relative_to(root) / "device"), "0x1050")
             bind(root, pci, "virtio-pci", "virtio_pci")
-            actual_gpu = root / "sys/devices/virtio0"
+            actual_gpu = pci / "virtio0"
             bind(root, actual_gpu, "virtio_gpu", "virtio_gpu")
+            actual_card = pci / "drm/card0"
+            actual_card.mkdir(parents=True)
+            (actual_card / "device").symlink_to(pci)
             card = root / "sys/class/drm/card0"
-            card.mkdir(parents=True)
-            (card / "device").symlink_to(actual_gpu)
+            card.parent.mkdir(parents=True)
+            card.symlink_to(actual_card)
             nic = root / "sys/bus/pci/devices/0000:01:00.0"
             put(root, str(nic.relative_to(root) / "class"), "0x020000")
             put(root, str(nic.relative_to(root) / "vendor"), "0x10ec")
@@ -93,6 +100,30 @@ class HardwareFixtures(unittest.TestCase):
             self.assertEqual(report["summary"]["relevant_unbound"], 1)
             self.assertEqual(len([args for args in calls if args[0] == "/usr/sbin/modprobe"]), 1)
             self.assertIn("not proof", report["note"])
+
+    def test_drm_transport_without_proven_function_remains_unknown(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            pci = root / "sys/devices/pci0000:00/0000:00:02.0"
+            bind(root, pci, "virtio-pci", "virtio_pci")
+            actual_card = pci / "drm/card0"
+            actual_card.mkdir(parents=True)
+            (actual_card / "device").symlink_to(pci)
+            card = root / "sys/class/drm/card0"
+            card.parent.mkdir(parents=True)
+            card.symlink_to(actual_card)
+            result = hardware.graphics_binding(card)
+            self.assertEqual(result["status"], "functional-driver-unknown")
+            self.assertIsNone(result["driver"])
+            self.assertIsNone(result["module"])
+            self.assertEqual(result["transport_driver"], "virtio-pci")
+            # A direct native GPU binding still follows the DRM node's
+            # ancestry and does not depend on optional module metadata.
+            (pci / "driver").unlink()
+            bind(root, pci, "amdgpu", None)
+            result = hardware.graphics_binding(card)
+            self.assertEqual(result["driver"], "amdgpu")
+            self.assertIsNone(result["module"])
 
     def test_unreadable_journal_and_no_alias_match_stay_unknown(self):
         with tempfile.TemporaryDirectory() as temporary:

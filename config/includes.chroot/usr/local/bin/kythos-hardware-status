@@ -20,6 +20,7 @@ VENDORS = {"0x10de": "NVIDIA", "0x1002": "AMD", "0x8086": "Intel", "0x1af4": "Vi
 RELEVANT = {"storage", "network", "graphics", "multimedia", "input", "audio", "video", "wireless", "vendor-specific"}
 MODULE_NAME = re.compile(r"[A-Za-z0-9_+-]{1,128}\Z")
 MODALIAS = re.compile(r"[A-Za-z0-9_:.*?+,-]{1,4096}\Z")
+VIRTIO_TRANSPORTS = {"virtio-pci", "virtio-mmio", "virtio_ccw"}
 
 
 def text(path, default=""):
@@ -74,6 +75,29 @@ def binding(path, ancestors=False):
         except OSError:
             continue
     return {"status": "unbound", "driver": None, "module": None}
+
+
+def graphics_binding(card):
+    """DRM nodes can sit beside, rather than below, their virtio function."""
+    observed = binding(card, ancestors=True)
+    if observed["status"] == "unbound":
+        observed = binding(card / "device")
+    if observed["driver"] not in VIRTIO_TRANSPORTS:
+        return observed
+    # On virtio-vga, card0/device names the PCI transport while the actual
+    # graphics function is a sibling virtioN node. Never call the transport a
+    # rendering driver, or infer a binding from a merely loaded module.
+    device = (card / "device").resolve()
+    functions = []
+    for child in sorted(device.glob("virtio*"))[:32]:
+        if re.fullmatch(r"virtio\d+", child.name):
+            candidate = binding(child)
+            if candidate["driver"] == "virtio_gpu":
+                functions.append(candidate)
+    if len(functions) == 1:
+        return functions[0]
+    return {"status": "functional-driver-unknown", "driver": None, "module": None,
+            "transport_driver": observed["driver"]}
 
 
 def firmware_messages(output):
@@ -140,7 +164,7 @@ def collect_hardware(root=Path("/"), runner=run_readonly):
     for card in sorted((root / "sys/class/drm").glob("card*")):
         if re.fullmatch(r"card\d+", card.name) and (card / "device").exists():
             item = {"name": card.name}
-            item.update(binding(card / "device"))
+            item.update(graphics_binding(card))
             report["graphics"].append(item)
     for disk in sorted((root / "sys/block").glob("*")):
         if not re.fullmatch(r"(?:sd[a-z]+|vd[a-z]+|xvd[a-z]+|nvme\d+n\d+|mmcblk\d+)", disk.name):

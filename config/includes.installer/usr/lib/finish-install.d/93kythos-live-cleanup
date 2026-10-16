@@ -7,3 +7,13 @@ set -eu
 if test -x /target/usr/local/libexec/kythos-calamares-clean-live-files; then
     in-target /usr/local/libexec/kythos-calamares-clean-live-files
 fi
+
+# The copied live filesystem defaults to graphical.target so it can start the
+# temporary installer UI. The installed common base must start at a terminal,
+# matching the Calamares finalizer and avoiding a dead graphical boot after
+# the live X/Qt packages are removed.
+in-target /usr/bin/systemctl set-default multi-user.target
+if test "$(in-target /usr/bin/systemctl get-default)" != multi-user.target; then
+    printf '%s\n' 'KythOS Kernal failed to set the installed terminal target.' >&2
+    exit 1
+fi
