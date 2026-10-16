@@ -73,7 +73,7 @@ Rectangle {
                     model: [
                         {
                             number: "01", title: qsTr("Storage, your way"),
-                            body: qsTr("Use guided or manual partitioning. Alongside and replacement appear when your disk allows them. Guided boot sizes are defaults; manual mode lets you set your own sizes and mount points.")
+                            body: qsTr("Choose Use entire disk for automatic partitioning and mounting. It erases the selected disk. Manual partitioning lets you choose sizes and mount points. Alongside and replacement appear when available.")
                         },
                         {
                             number: "02", title: qsTr("Encryption with recovery"),
@@ -90,7 +90,7 @@ Rectangle {
                     ]
                     Rectangle {
                         width: cards.cardWidth
-                        height: Math.max(190, cardContent.height + 36)
+                        height: Math.max(176, cardContent.height + 36)
                         radius: 8
                         color: "#111f30"
                         border.color: "#263a50"
@@ -99,23 +99,34 @@ Rectangle {
                             x: 18
                             y: 18
                             width: parent.width - 36
-                            spacing: 10
-                            Text {
-                                text: modelData.number
-                                color: "#00d5e8"
-                                font.family: "DejaVu Sans"
-                                font.pixelSize: 11
-                                font.weight: Font.DemiBold
-                                font.letterSpacing: 1
-                            }
-                            Text {
+                            spacing: 12
+                            Row {
                                 width: parent.width
-                                text: modelData.title
-                                color: "#f4faff"
-                                font.family: "DejaVu Sans"
-                                font.pixelSize: 16
-                                font.weight: Font.DemiBold
-                                wrapMode: Text.WordWrap
+                                spacing: 10
+                                Rectangle {
+                                    width: 28
+                                    height: 25
+                                    radius: 5
+                                    color: "#173248"
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: modelData.number
+                                        color: "#83edf5"
+                                        font.family: "DejaVu Sans"
+                                        font.pixelSize: 11
+                                        font.weight: Font.DemiBold
+                                    }
+                                }
+                                Text {
+                                    width: parent.width - 38
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: modelData.title
+                                    color: "#f4faff"
+                                    font.family: "DejaVu Sans"
+                                    font.pixelSize: 16
+                                    font.weight: Font.DemiBold
+                                    wrapMode: Text.WordWrap
+                                }
                             }
                             Text {
                                 width: parent.width

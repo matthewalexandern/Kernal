@@ -1,4 +1,4 @@
-Description: Validate proposed boot and encrypted swap layout and honor the UI palette
+Description: Validate native storage plans and clarify installation choices
 Author: KythOS contributors
 Forwarded: not-needed
 Last-Update: 2026-10-16
@@ -11,6 +11,12 @@ and defensively replace the partition queue with a failure job before writes.
 No passphrases are copied or logged by this patch.
 Partition legends use their widget's text and background palette so labels
 and sizes remain readable in the KythOS dark theme.
+
+The native automatic erase choice is labeled Use entire disk and explains
+automatic partition creation, formatting, mounting, and erasure of the selected
+disk in every OS-detection case. Native choice widgets share a cosmetic object
+name and layout spacing for the KythOS theme. Choice IDs, signals, and storage
+operations are preserved.
 
 --- /dev/null
 +++ b/src/modules/partition/KythosStoragePolicy.h
@@ -369,3 +375,93 @@ and sizes remain readable in the KythOS dark theme.
  }
  
  QModelIndex
+--- a/src/modules/partition/gui/ChoicePage.cpp
++++ b/src/modules/partition/gui/ChoicePage.cpp
+@@ -252,7 +252,7 @@
+     //  3) Manual
+     //  TBD: upgrade option?
+ 
+-    QSize iconSize( Calamares::defaultIconSize().width() * 2, Calamares::defaultIconSize().height() * 2 );
++    const QSize iconSize = Calamares::defaultIconSize();
+     m_grp = new QButtonGroup( this );
+ 
+     m_alongsideButton = new PrettyRadioButton;
+@@ -310,6 +310,17 @@
+         Calamares::defaultPixmap( Calamares::PartitionManual, Calamares::Original, iconSize ) );
+     m_itemsLayout->addWidget( m_somethingElseButton );
+     m_somethingElseButton->addToGroup( m_grp, InstallChoice::Manual );
++
++    // Give the native choices a consistent visual container. Their IDs,
++    // signals and partition operations remain unchanged.
++    for ( auto* choice : { m_alongsideButton, m_replaceButton, m_eraseButton, m_somethingElseButton } )
++    {
++        choice->setObjectName( QStringLiteral( "kythosPartitionChoice" ) );
++        choice->setAttribute( Qt::WA_StyledBackground, true );
++        choice->layout()->setContentsMargins( 12, 6, 12, 6 );
++        choice->layout()->setSpacing( 12 );
++    }
++    m_itemsLayout->setSpacing( 8 );
+ 
+     m_itemsLayout->addStretch();
+ 
+@@ -1622,7 +1633,7 @@
+     if ( m_somethingElseButton )
+     {
+         m_somethingElseButton->setText( tr( "<strong>Manual partitioning</strong><br/>"
+-                                            "You can create or resize partitions yourself." ) );
++                                            "Create or resize partitions and choose their sizes and mount points yourself." ) );
+     }
+ }
+ 
+@@ -1737,9 +1748,9 @@
+                                      "You will be able to review and confirm your choices "
+                                      "before any change is made to the storage device." ) );
+ 
+-        m_eraseButton->setText( tr( "<strong>Erase disk</strong><br/>"
+-                                    "This will <font color=\"red\">delete</font> all data "
+-                                    "currently present on the selected storage device." ) );
++        m_eraseButton->setText( tr( "<strong>Use entire disk</strong><br/>"
++                                    "Automatically create, format, and mount the required partitions on the selected disk. "
++                                    "<strong>All data on that disk will be erased.</strong>" ) );
+ 
+         m_alongsideButton->setText( tr( "<strong>Install alongside</strong><br/>"
+                                         "The installer will shrink a partition to make room for %1." )
+@@ -1764,9 +1775,9 @@
+                                             "The installer will shrink a partition to make room for %1." )
+                                             .arg( Calamares::Branding::instance()->shortVersionedName() ) );
+ 
+-            m_eraseButton->setText( tr( "<strong>Erase disk</strong><br/>"
+-                                        "This will <font color=\"red\">delete</font> all data "
+-                                        "currently present on the selected storage device." ) );
++            m_eraseButton->setText( tr( "<strong>Use entire disk</strong><br/>"
++                                        "Automatically create, format, and mount the required partitions on the selected disk. "
++                                        "<strong>All data on that disk will be erased.</strong>" ) );
+ 
+             m_replaceButton->setText( tr( "<strong>Replace a partition</strong><br/>"
+                                           "Replaces a partition with %1." )
+@@ -1784,9 +1795,9 @@
+                                             "The installer will shrink a partition to make room for %1." )
+                                             .arg( Calamares::Branding::instance()->shortVersionedName() ) );
+ 
+-            m_eraseButton->setText( tr( "<strong>Erase disk</strong><br/>"
+-                                        "This will <font color=\"red\">delete</font> all data "
+-                                        "currently present on the selected storage device." ) );
++            m_eraseButton->setText( tr( "<strong>Use entire disk</strong><br/>"
++                                        "Automatically create, format, and mount the required partitions on the selected disk. "
++                                        "<strong>All data on that disk will be erased.</strong>" ) );
+ 
+             m_replaceButton->setText( tr( "<strong>Replace a partition</strong><br/>"
+                                           "Replaces a partition with %1." )
+@@ -1806,9 +1817,9 @@
+                                         "The installer will shrink a partition to make room for %1." )
+                                         .arg( Calamares::Branding::instance()->shortVersionedName() ) );
+ 
+-        m_eraseButton->setText( tr( "<strong>Erase disk</strong><br/>"
+-                                    "This will <font color=\"red\">delete</font> all data "
+-                                    "currently present on the selected storage device." ) );
++        m_eraseButton->setText( tr( "<strong>Use entire disk</strong><br/>"
++                                    "Automatically create, format, and mount the required partitions on the selected disk. "
++                                    "<strong>All data on that disk will be erased.</strong>" ) );
+ 
+         m_replaceButton->setText( tr( "<strong>Replace a partition</strong><br/>"
+                                       "Replaces a partition with %1." )

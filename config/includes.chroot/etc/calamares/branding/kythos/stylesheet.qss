@@ -31,6 +31,17 @@ QLabel#summaryItemBody {
     background-color: #111f30; border: 1px solid #263a50;
     border-radius: 7px; padding: 10px;
 }
+QWidget#kythosPartitionChoice {
+    background-color: #111f30; border: 1px solid #263a50; border-radius: 7px;
+}
+QWidget#kythosPartitionChoice:hover { background-color: #142739; border-color: #3c6378; }
+QWidget#kythosPartitionChoice > QWidget { background-color: transparent; }
+QWidget#kythosPartitionChoice QLabel { color: #c6d5e1; }
+QWidget#kythosPartitionChoice QRadioButton:focus {
+    background-color: #173248; border: 1px solid #00d5e8; border-radius: 4px;
+}
+QLabel#m_messageLabel { color: #b5c6d5; padding: 4px 0 8px 0; }
+QLabel#m_drivesLabel { color: #d6e4ee; }
 QLabel#bootInfoLabel, QLabel#deviceInfoLabel, QLabel#mountPointExplanation { color: #b5c6d5; }
 QLabel#labelFullNameError, QLabel#labelUsernameError, QLabel#labelHostnameError,
 QLabel#labelUserPasswordError, QLabel#labelRootPasswordError { color: #ffb5b5; }
@@ -54,6 +65,11 @@ QPushButton:default:hover, QPushButton#view-button-next:hover,
 QPushButton#view-button-done:hover { background-color: #3ae4ef; border-color: #3ae4ef; }
 QPushButton:default:focus, QPushButton#view-button-next:focus,
 QPushButton#view-button-done:focus { border-color: #e4fdff; }
+QPushButton#view-button-back, QPushButton#view-button-next, QPushButton#view-button-cancel {
+    min-width: 72px; padding: 8px 16px; border-radius: 6px;
+}
+QPushButton#view-button-back:focus, QPushButton#view-button-next:focus,
+QPushButton#view-button-cancel:focus { padding: 7px 15px; }
 QPushButton:disabled, QToolButton:disabled,
 QPushButton#view-button-next:disabled, QPushButton#view-button-done:disabled {
     color: #8295a8; background-color: #122031; border: 1px solid #2a3c50;

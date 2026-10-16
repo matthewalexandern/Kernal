@@ -7,6 +7,17 @@ packaged files are retained. The overlay is loaded first from
 from the installed system.
 
 All native manual, erase, alongside and replacement choices remain available.
+The automatic erase choice is displayed as **Use entire disk** in every
+OS-detection case. Its description says that required partitions are created,
+formatted, and mounted automatically on the selected disk, and explicitly
+warns that all data on that disk will be erased. Manual partitioning still
+exposes sizes and mount points.
+
+The existing native choice containers share the `kythosPartitionChoice` object
+name, use consistent layout margins, and allow the branding stylesheet to
+draw restrained cards. Their native choice IDs, signals, and partition
+operations are unchanged.
+
 The patch checks the proposed in-memory storage model before disk jobs run:
 
 - A plain root may contain its own boot files.

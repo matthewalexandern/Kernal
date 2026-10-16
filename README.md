@@ -73,7 +73,9 @@ choices in Calamares and review its summary before installation.
 
 Calamares exposes its native erase, alongside, replacement, and manual
 partitioning choices when applicable to the detected disk. Manual partitioning
-lets you create and edit filesystem sizes and mount points. The guided layout
+lets you create and edit filesystem sizes and mount points. **Use entire disk**
+automatically creates, formats, and mounts the required partitions on the
+selected disk, erasing all data on that disk. The guided layout
 suggests a 2 GiB `/boot`; this is not the root filesystem size or a manual size
 limit. Optional LUKS2 root encryption requires a separate unencrypted `/boot`
 and encrypted swap, a swap file inside encrypted root, or no swap. A native

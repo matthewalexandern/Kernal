@@ -4,7 +4,9 @@
 
 Calamares offers native guided and manual partitioning, optional LUKS2 root
 encryption, and swap choices. Manual partitioning lets you edit sizes and
-mount points. With encrypted root, use a separate unencrypted `/boot` and
+mount points. **Use entire disk** automatically creates, formats, and mounts
+the required partitions on the selected disk and erases all data there.
+With encrypted root, use a separate unencrypted `/boot` and
 encrypted swap, a swap file inside encrypted root, or no swap. The EFI System
 Partition also remains unencrypted. The guided `/boot` size is a suggestion;
 it does not fix the sizes in the manual editor. The native partition module
