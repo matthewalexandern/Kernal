@@ -1,0 +1,14 @@
+{
+  "source_commit": "b99b4b7ec90a11ef09ad3958e01ccc67363b55cd",
+  "native_architecture": "arm64",
+  "invocation": "full unmodified build-arm64.sh as root",
+  "source_validation_passed": true,
+  "python_groups": 21,
+  "python_tests": 272,
+  "skips": 0,
+  "failures": 0,
+  "stage_gate": "image stages require separate coordinator permit",
+  "observed_utc": "2026-10-16T21:32:24.517218+00:00",
+  "raw_build_log": "private runtime log; not embedded or reproduced",
+  "runtime_values_omitted": true
+}

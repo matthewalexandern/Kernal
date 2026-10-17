@@ -1,0 +1,32 @@
+{
+  "utc": "2026-10-16T23:56:02.814770+00:00",
+  "source_git_commit": "b99b4b7ec90a11ef09ad3958e01ccc67363b55cd",
+  "run_id": "20261016T211515Z",
+  "debian_architecture": "amd64",
+  "edition": "base",
+  "binary_iso_sha256": "2f3051662ee0d60d7acc38bc425c75f956aea636471e82d3e916c4b0bfbeb6cf",
+  "binary_iso_size": 1906999296,
+  "binary_stable_through_checks": true,
+  "ssh_checker_sha256": "b37efd45bdce676d1a8b9a40e09a2d37befbf8fceb8bd9ac3ff8e5e8b2ed7e0b",
+  "ssh_report_sha256": "d430c4407d4bb011c8b85c1eb805bb3d44d1636c8ca39d6311c0ba8d4c4f0df9",
+  "ssh_exit_status": 0,
+  "ssh_complete": true,
+  "ssh_passed": true,
+  "ssh_assertions": 19,
+  "ssh_failed_assertions": [],
+  "ssh_incomplete_labels": [],
+  "header_report_sha256": "79bfc51e3114fa0ed1bb3fa24296eb3d918213c2947b750b71ed6471244bc370",
+  "header_passed": true,
+  "final_full_build_acceptance": false,
+  "binary_iso_basename": "kythos-kernal-base-0.2.0-amd64.hybrid.iso",
+  "scope": "Read-only finished-binary-image SSH configuration and BIOS/UEFI boot metadata plus KythOS volume-header checks. This is not a fresh-install SSH connection or completed full-build acceptance.",
+  "pending": [
+    "source-iso",
+    "full-build-completion",
+    "source-coverage",
+    "private-material-audits",
+    "export-and-read-back",
+    "fresh-install-and-runtime-acceptance"
+  ],
+  "runtime_values_omitted": true
+}

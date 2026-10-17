@@ -1,0 +1,44 @@
+{
+  "utc": "2026-10-17T00:13:21.285351+00:00",
+  "complete": true,
+  "passed": true,
+  "source_git_commit": "b99b4b7ec90a11ef09ad3958e01ccc67363b55cd",
+  "binary_iso_sha256": "2f3051662ee0d60d7acc38bc425c75f956aea636471e82d3e916c4b0bfbeb6cf",
+  "binary_iso_size": 1906999296,
+  "binary_stable_through_checks": true,
+  "checks": {
+    "grub-background": {
+      "matches_frozen_source": true,
+      "expected_sha256": "36843802380b838b2113433044881b53ed29357add6949d7f214e69098334d4f",
+      "actual_sha256": "36843802380b838b2113433044881b53ed29357add6949d7f214e69098334d4f",
+      "bytes": 21697
+    },
+    "syslinux-background": {
+      "matches_frozen_source": true,
+      "expected_sha256": "1abb2425c34f49acbdc0abc7d845b50c7f084793d5c8fecf57177e0df3fc81c8",
+      "actual_sha256": "1abb2425c34f49acbdc0abc7d845b50c7f084793d5c8fecf57177e0df3fc81c8",
+      "bytes": 12571
+    },
+    "plymouth-white-logo": {
+      "matches_frozen_source": true,
+      "expected_sha256": "88113acdae1c18209684c38b0da525c503d54622fa47479821f700769778eca8",
+      "actual_sha256": "88113acdae1c18209684c38b0da525c503d54622fa47479821f700769778eca8",
+      "bytes": 46886
+    },
+    "plymouth-background": {
+      "matches_frozen_source": true,
+      "expected_sha256": "a9a87526cad87fe35f3f0352cb4f1064b82b5ff97abebe7d30b5ae2c4bd281f5",
+      "actual_sha256": "a9a87526cad87fe35f3f0352cb4f1064b82b5ff97abebe7d30b5ae2c4bd281f5",
+      "bytes": 33445
+    },
+    "installer-white-vector": {
+      "matches_frozen_source": true,
+      "expected_sha256": "2c6e3d127982b3d228ecaad73414fabf8ce85c2318fb548496dad1cd88e88afb",
+      "actual_sha256": "2c6e3d127982b3d228ecaad73414fabf8ce85c2318fb548496dad1cd88e88afb",
+      "bytes": 4941
+    }
+  },
+  "incomplete_labels": [],
+  "actual_vm_boot_presentation_tested": false,
+  "runtime_values_omitted": true
+}

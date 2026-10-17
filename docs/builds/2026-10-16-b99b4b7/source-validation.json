@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "record_kind": "source-validation-progress",
+  "record_kind": "source-and-image-validation-progress",
   "product": "KythOS Kernal",
   "version": "0.2.0",
   "image_source": {
@@ -11,18 +11,180 @@
     "bundle_sha256": "a989c07b180ff995e875bf2a575f530a45b8e0e4fd77e24cb809dafa30fde928"
   },
   "build_state": {
-    "base_amd64": "in-progress",
-    "base_arm64": "queued-after-amd64-export",
+    "base_amd64": "normal-full-build-exited-zero-independent-ssh-export-active",
+    "base_arm64": "native-module-passed-image-stages-held-until-amd64-export",
     "final_pin_full_source_gate": {
       "amd64": "passed-272-tests-21-suites-zero-skips-clean-checkout",
-      "arm64": "pending-queued-build"
+      "arm64": "passed-272-tests-21-suites-zero-failures-or-skips"
     },
-    "amd64_native_installer": "source-fetched-patch-no-fuzz-13-schemas-passed-cmake-underway",
-    "new_iso_artifacts": [],
+    "amd64_native_installer": "module-linked-policy-and-13-schemas-passed",
+    "arm64_native_installer": "module-linked-policy-and-13-schemas-passed",
+    "arm64_image_construction": "not-started-external-coordinator-barrier-held",
+    "new_iso_artifacts": [
+      {
+        "architecture": "amd64",
+        "edition": "base",
+        "kind": "binary",
+        "basename": "kythos-kernal-base-0.2.0-amd64.hybrid.iso",
+        "bytes": 1906999296,
+        "sha256": "2f3051662ee0d60d7acc38bc425c75f956aea636471e82d3e916c4b0bfbeb6cf",
+        "status": "normal-build-passed-producer-verified-independent-export-pending",
+        "receipt": "amd64-normal-build.json"
+      },
+      {
+        "architecture": "amd64",
+        "edition": "base",
+        "kind": "source",
+        "basename": "kythos-kernal-base-0.2.0-source.iso",
+        "bytes": 4168837120,
+        "sha256": "57c008b9e7ef8a343e44d0b584ea37e3658210c28b7ad31673568f2321575ccd",
+        "status": "normal-build-passed-producer-verified-independent-export-pending",
+        "receipt": "amd64-normal-build.json"
+      }
+    ],
     "fresh_install_acceptance": "not-run-on-new-images",
-    "architecture_pair_gate": "pending-completed-artifacts"
+    "architecture_pair_gate": "pending-completed-artifacts",
+    "amd64_source_iso": "produced-producer-checksum-verified",
+    "source_coverage": {
+      "amd64": "passed-zero-missing-tuples",
+      "arm64": "pending-image-build"
+    },
+    "private_material_audits": "pending",
+    "artifact_export_and_read_back": {
+      "amd64": "independent-ssh-export-active-verification-pending",
+      "arm64": "pending-image-build"
+    },
+    "amd64_normal_full_build_exit_status": 0
   },
   "evidence": [
+    {
+      "label": "amd64-normal-build-20261016T211515Z",
+      "receipt": "amd64-normal-build.json",
+      "scope": "normal-full-build-and-producer-validation",
+      "commit": "b99b4b7ec90a11ef09ad3958e01ccc67363b55cd",
+      "architecture": "amd64",
+      "edition": "base",
+      "command": "./scripts/build.sh",
+      "actual_exit_status": 0,
+      "original_process_and_exit_marker_agree": true,
+      "source_git_clean": true,
+      "source_coverage": {
+        "binary_pool_packages": 147,
+        "live_root_packages": 961,
+        "required_source_tuples": 554,
+        "provided_source_tuples": 556,
+        "source_payload_files_verified": 1233,
+        "missing_source_tuples": 0
+      },
+      "normal_recipe_checks": {
+        "license_notices": "passed",
+        "architecture": "passed",
+        "image_identity": "passed",
+        "recipe_digest": "passed",
+        "producer_manifest_readback": "passed"
+      },
+      "producer_manifest": {
+        "entries": 29,
+        "sha256": "165471f66b6831ed84088a3a766a9e2818182e126648fb6d6a9cb9f30e66cbbc",
+        "readback": "passed"
+      },
+      "binary_unchanged_from_early_checks": true,
+      "packaged_artwork_byte_comparisons": {
+        "passed": 5,
+        "total": 5
+      },
+      "independent_export_verification": "pending-active-ssh-copy",
+      "private_material_audit": "pending",
+      "cleanup": "pending",
+      "fresh_install_and_runtime_acceptance": "pending",
+      "result": "normal-build-passed-export-and-runtime-pending"
+    },
+    {
+      "label": "amd64-binary-early-checks-20261016T211515Z",
+      "receipt": "amd64-binary-early-checks.json",
+      "scope": "read-only-finished-binary-image-configuration-and-boot-volume-header-checks",
+      "commit": "b99b4b7ec90a11ef09ad3958e01ccc67363b55cd",
+      "architecture": "amd64",
+      "edition": "base",
+      "binary_iso_basename": "kythos-kernal-base-0.2.0-amd64.hybrid.iso",
+      "binary_iso_bytes": 1906999296,
+      "binary_iso_sha256": "2f3051662ee0d60d7acc38bc425c75f956aea636471e82d3e916c4b0bfbeb6cf",
+      "binary_stable_through_checks": true,
+      "ssh_configuration_checks": {
+        "assertions": 19,
+        "passed": 19,
+        "failed": 0,
+        "incomplete": 0,
+        "exit_status": 0
+      },
+      "bios_uefi_boot_metadata_and_kythos_volume_headers": "passed",
+      "fresh_install_ssh": "not-tested-by-image-checker",
+      "final_full_build_acceptance": false,
+      "result": "early-binary-checks-passed-full-build-and-runtime-pending"
+    },
+    {
+      "label": "amd64-native-calamares-module-b99b4b7",
+      "receipt": "amd64-native-module.json",
+      "scope": "native-module-construction-and-policy-validation",
+      "commit": "b99b4b7ec90a11ef09ad3958e01ccc67363b55cd",
+      "architecture": "amd64",
+      "source_package": "calamares",
+      "source_version": "3.3.14-1",
+      "required_runtime_package_version": "3.3.14-1",
+      "native_target": "calamares_viewmodule_partition",
+      "module_linked": true,
+      "module_sha256": "2d4819cc4cab073dc698de07f7ca063792d781ac25b912e5e3dad31fc310ce0b",
+      "native_schema_tests_passed": 13,
+      "policy_test": "passed",
+      "installed_boot_test": "not-run-by-module-build",
+      "result": "native-module-checks-passed"
+    },
+    {
+      "label": "arm64-native-calamares-module-b99b4b7",
+      "receipt": "arm64-native-module.json",
+      "scope": "native-module-construction-and-policy-validation",
+      "commit": "b99b4b7ec90a11ef09ad3958e01ccc67363b55cd",
+      "architecture": "arm64",
+      "source_package": "calamares",
+      "source_version": "3.3.14-1",
+      "required_runtime_package_version": "3.3.14-1",
+      "native_target": "calamares_viewmodule_partition",
+      "module_linked": true,
+      "module_sha256": "cd904ac746cb1dd5f9918e8baeaae061967b955e1bbfe40eea84d9978c3df014",
+      "native_schema_tests_passed": 13,
+      "policy_test": "passed",
+      "installed_boot_test": "not-run-by-module-build",
+      "result": "native-module-checks-passed",
+      "native_policy_assertions_passed": 7,
+      "image_permit_present": false,
+      "live_build_stage_directories": {
+        "chroot": false,
+        "binary": false,
+        "source": false
+      }
+    },
+    {
+      "label": "arm64-source-gate-b99b4b7",
+      "receipt": "arm64-source-gate.json",
+      "scope": "full-source-gate-on-immutable-final-pin",
+      "commit": "b99b4b7ec90a11ef09ad3958e01ccc67363b55cd",
+      "architecture": "arm64",
+      "command": "./scripts/build-arm64.sh",
+      "invocation": "normal-unmodified-build-as-root",
+      "tests": {
+        "suites": 21,
+        "ran": 272,
+        "passed": 272,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "additional_checks": "shell, parser, branding, package and root nftables checks passed",
+      "native_module_build": "passed-module-linked-and-policy-verified",
+      "image_construction": "not-started-external-coordinator-barrier-held",
+      "observed_utc": "2026-10-16T21:32:24.517218+00:00",
+      "result": "full-final-pin-source-gate-passed"
+    },
     {
       "label": "amd64-source-gate-b99b4b7",
       "receipt": "amd64-source-gate.json",
@@ -44,7 +206,7 @@
       "shell_checks": "installer branding, login branding, TPM2 PCR parser, recovery topology passed",
       "nftables_check": "passed-on-native-stock-debian-guest-kernel",
       "subsequent_native_module_schema_checks": 13,
-      "native_module_build": "in-progress-no-compilation-success-claimed",
+      "native_module_build": "passed-module-linked-and-policy-verified",
       "result": "full-final-pin-source-gate-passed"
     },
     {
@@ -174,7 +336,7 @@
       "result": "passed"
     }
   ],
-  "counting_policy": "Evidence counts overlap and are not summed. The amd64 final-pin aggregate gate is separately observed; the pre-pin ARM64 snapshot and targeted reruns do not establish an ARM64 final-pin aggregate gate.",
+  "counting_policy": "Evidence counts overlap and are not summed. Both architectures' final-pin aggregate source gates are separately observed in their actual normal builds; the earlier snapshots and targeted reruns are distinct development evidence.",
   "remaining_acceptance": [
     "completed-binary-and-source-iso-builds",
     "artifact-checksum-and-source-closure-verification",

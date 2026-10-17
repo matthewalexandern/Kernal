@@ -1,0 +1,75 @@
+{
+  "utc": "2026-10-17T00:48:40.774602+00:00",
+  "actual_build_exit_status": 0,
+  "source_git_commit": "b99b4b7ec90a11ef09ad3958e01ccc67363b55cd",
+  "source_git_state": "clean",
+  "debian_architecture": "amd64",
+  "edition": "base",
+  "run_id": "20261016T211515Z",
+  "artifact_mode": "hardlink",
+  "manifest_sha256": "165471f66b6831ed84088a3a766a9e2818182e126648fb6d6a9cb9f30e66cbbc",
+  "manifest_top_level_entries": 29,
+  "images": {
+    "binary": {
+      "file": "kythos-kernal-base-0.2.0-amd64.hybrid.iso",
+      "sha256": "2f3051662ee0d60d7acc38bc425c75f956aea636471e82d3e916c4b0bfbeb6cf",
+      "bytes": 1906999296,
+      "retained_as_hardlink": true
+    },
+    "source": {
+      "file": "kythos-kernal-base-0.2.0-source.iso",
+      "sha256": "57c008b9e7ef8a343e44d0b584ea37e3658210c28b7ad31673568f2321575ccd",
+      "bytes": 4168837120,
+      "retained_as_hardlink": true
+    }
+  },
+  "coverage": {
+    "binary_pool_packages": 147,
+    "live_root_packages": 961,
+    "required_source_tuples": 554,
+    "provided_source_tuples": 556,
+    "source_payload_files_verified": 1233,
+    "missing_source_tuples": 0
+  },
+  "missing_source_report_empty": true,
+  "final_binary_matches_early_checks": true,
+  "independent_export_verified": false,
+  "private_material_audit_completed": false,
+  "completion_evidence": {
+    "original_build_process_exit_status": 0,
+    "recorded_exit_marker": 0,
+    "process_and_marker_agree": true
+  },
+  "normal_recipe_checks": {
+    "license_notices": "passed",
+    "architecture": "passed",
+    "image_identity": "passed",
+    "recipe_digest": "passed",
+    "producer_manifest_readback": "passed"
+  },
+  "packaged_artwork": {
+    "receipt": "amd64-packaged-artwork.json",
+    "comparisons": 5,
+    "passed": 5,
+    "actual_bytes_match_frozen_source": true,
+    "actual_vm_boot_presentation_tested": false
+  },
+  "source_alias": {
+    "receipt": "amd64-source-alias.json",
+    "existing_recipe_hook_only": true,
+    "manual_repair": false,
+    "source_package": "grub2",
+    "source_version": "2.12-9+deb13u2",
+    "required_tuple_covered": true
+  },
+  "sampled_storage": {
+    "minimum_physical_free_bytes": 5409939456,
+    "scope": "minimum observed sample during the build"
+  },
+  "independent_ssh_export": "active-verification-pending",
+  "private_material_audit": "pending",
+  "cleanup": "pending",
+  "fresh_install_and_runtime_acceptance": "pending",
+  "scope": "Normal amd64 full build exited zero and producer checks passed. Independent export verification, private-material audit, cleanup and fresh-install/runtime acceptance remain pending.",
+  "runtime_values_omitted": true
+}

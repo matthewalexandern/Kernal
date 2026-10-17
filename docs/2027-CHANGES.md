@@ -114,23 +114,31 @@ See [console and appearance](CONSOLE.md), [Wi-Fi](WIFI.md),
 
 | Evidence | Current status |
 | --- | --- |
-| Source/native tests | Actual amd64 final-pin source gate passed 272/272 tests across 21 suites with zero skips; checkout stayed clean with no unexpected generated source files. Native nftables and shell/branding/recovery checks passed; subsequent native Calamares stage passed 13 schemas. Earlier ARM64 pre-pin gate also passed 272 tests but failed its strict postcheck solely for one bytecode file, with all 299 declared inputs unchanged; corrected console rerun passed 11/11 with strict verification. Native Docker console passed 11/11, host Bash/Readline passed 26/26, and final-pin ARM64 Plymouth passed 3/3. These overlapping counts are not summed. |
+| Source/native tests | Both actual final-pin normal builds passed their complete source gates: 272/272 tests across 21 suites per architecture, zero failures/skips, plus shell/parser/branding/package and native-root nftables checks. amd64 checkout stayed clean with no unexpected generated source files. Earlier ARM64 pre-pin gate also passed 272 tests but failed its strict postcheck solely for one bytecode file, with all 299 declared inputs unchanged; corrected console rerun passed 11/11 with strict verification. Native Docker console passed 11/11, host Bash/Readline passed 26/26, and final-pin ARM64 Plymouth passed 3/3. These overlapping counts are not summed. |
+| Native Calamares modules | amd64 and ARM64 modules linked and passed their C++ policy test and all 13 schemas each against Calamares `3.3.14-1`. Module hashes/provenance are recorded in the build progress record; no installed-system boot test is implied. |
 | Immutable image source | Commit `b99b4b7ec90a11ef09ad3958e01ccc67363b55cd`, tree `25ffcb6c9ae1314e335e83fd084374134d97a049`; source-bundle SHA-256 `a989c07b180ff995e875bf2a575f530a45b8e0e4fd77e24cb809dafa30fde928` |
-| Authenticated dependency resolution for the selected image set | Final build-time recorded result pending |
-| New 0.2.0 amd64/ARM64 binary/source ISO builds | amd64 build is underway after its full source gate and 13 Calamares schemas passed; native installer CMake work is in progress. ARM64 is queued after amd64 export, with its clean candidate clone's 299 input bytes/symlink targets verified and canonical Git modes confirmed. No new ISO production is claimed. |
+| Authenticated dependency resolution/source closure | amd64 normal build passed: 147 binary-pool/961 live-root packages, 554 required/556 provided source tuples, 1,233 verified source payloads, zero missing tuples. Normal license/architecture/identity/recipe and producer checksum read-back checks passed. ARM64 image/source-closure gates remain pending. |
+| New 0.2.0 amd64/ARM64 binary/source ISO builds | Original amd64 normal build and recorded exit marker both reported 0 on the clean pin; binary and source ISOs were produced. Independent SSH export is active; verified export receipt, private-material audit and cleanup remain pending. ARM64 image construction remains held until amd64 export completes. |
+| amd64 binary early checks | `kythos-kernal-base-0.2.0-amd64.hybrid.iso`: 1,906,999,296 bytes; SHA-256 `2f3051662ee0d60d7acc38bc425c75f956aea636471e82d3e916c4b0bfbeb6cf`. Stable before/after read-only checks; finished-image SSH configuration checker passed 19/19 assertions and BIOS/UEFI boot metadata plus KythOS volume headers passed. These inspections do not establish actual boot, installation or remote SSH authentication. |
+| amd64 source ISO and artwork | `kythos-kernal-base-0.2.0-source.iso`: 4,168,837,120 bytes; SHA-256 `57c008b9e7ef8a343e44d0b584ea37e3658210c28b7ad31673568f2321575ccd`. Binary checksum remained unchanged at full-build completion. All five packaged artwork byte comparisons matched the frozen source; this does not establish observed boot presentation. |
 | Fresh-install SSH and other VM acceptance | Pending on the affected images |
 | Physical Wi-Fi/card reader/card operation | Pending on applicable hardware |
 | Apple-host boot/display/resize/acceleration | Pending on the actual supported host/hypervisor combination |
-| Exact new artifacts and checksums | Pending successful production and read-back verification |
+| Exact new artifacts and checksums | Both amd64 ISOs are recorded in the normal-build receipt. Original 29-entry producer `SHA256SUMS` SHA-256: `165471f66b6831ed84088a3a766a9e2818182e126648fb6d6a9cb9f30e66cbbc`. Independent export/read-back, private-material audit, ARM64 images and pair verification remain pending. |
 
 The [sanitized source-validation progress record](builds/2026-10-16-b99b4b7/README.md)
 and its [machine-readable receipt](builds/2026-10-16-b99b4b7/source-validation.json)
 preserve the distinction between the 272-test command success, its failed
 strict postcheck, and the successful targeted rerun. The separately observed
-complete amd64 final-pin source gate is recorded in the
-[amd64 receipt](builds/2026-10-16-b99b4b7/amd64-source-gate.json); ARM64's full
-build-time source gate remains pending. The hashed source bundle is a transfer
-artifact, not a binary or source ISO.
+complete final-pin source gates are recorded in the
+[amd64 receipt](builds/2026-10-16-b99b4b7/amd64-source-gate.json) and
+[ARM64 receipt](builds/2026-10-16-b99b4b7/arm64-source-gate.json). The hashed
+source bundle is a transfer artifact, not a binary or source ISO.
+The [amd64 early binary receipt](builds/2026-10-16-b99b4b7/amd64-binary-early-checks.json)
+records the produced binary and read-only inspections separately from pending
+runtime acceptance. The [amd64 normal-build receipt](builds/2026-10-16-b99b4b7/amd64-normal-build.json)
+now establishes producer build completion and source closure; it does not
+establish independent export or fresh-install/runtime acceptance.
 
 The final receipt must replace these pending entries with observed results or
 specific blockers and list only artifacts that actually exist. Record a
