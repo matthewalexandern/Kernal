@@ -37,6 +37,16 @@ stage = module("kythos_target_stage", MODULES / "kythos-target/main.py")
 
 
 class PlanTests(unittest.TestCase):
+    def test_edition_boot_keeps_base_console_and_explicitly_enables_desktop(self):
+        for selected in ('multi-user.target', 'graphical.target'):
+            with self.subTest(selected=selected), patch.object(target, 'installed_boot_target', return_value=selected), \
+                    patch.object(target, 'command') as commands:
+                target.configure_edition_boot()
+                expected = ([['/usr/bin/systemctl', 'enable', 'lightdm.service']]
+                            if selected == 'graphical.target' else [])
+                expected.append(['/usr/bin/systemctl', 'set-default', selected])
+                self.assertEqual([call.args[0] for call in commands.call_args_list], expected)
+
     def test_all_native_partition_and_swap_choices_remain_available(self):
         for firmware in ("bios", "efi"):
             for install in ("erase", "manual", "alongside", "replace"):

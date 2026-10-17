@@ -3,7 +3,7 @@ import calamares.slideshow 1.0
 
 Presentation {
     id: presentation
-    Rectangle { anchors.fill: parent; color: "#0c1522"; z: -1 }
+    Rectangle { anchors.fill: parent; color: "#0b0b0b"; z: -1 }
     Timer {
         interval: 14000
         running: presentation.activatedInCalamares
@@ -12,7 +12,7 @@ Presentation {
     }
     Slide {
         anchors.fill: parent
-        Rectangle { anchors.fill: parent; color: "#0c1522" }
+        Rectangle { anchors.fill: parent; color: "#0b0b0b" }
         Column {
             anchors.centerIn: parent
             width: parent.width * 0.82
@@ -22,13 +22,13 @@ Presentation {
                 width: 110
                 height: 100
                 fillMode: Image.PreserveAspectFit
-                source: "kythos-logo.png"
+                source: "kythos-logo.svg"
             }
             Text {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
                 text: qsTr("Built on a maintained foundation.")
-                color: "#f4faff"
+                color: "#ffffff"
                 font.family: "DejaVu Sans"
                 font.pixelSize: 27
                 font.weight: Font.DemiBold
@@ -37,8 +37,8 @@ Presentation {
             Text {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
-                text: qsTr("A supported kernel. Broad drivers and firmware.\nOne common base for the system you want to build.")
-                color: "#b5c6d5"
+                text: qsTr("KythOS Kernal™ 2027\nhttps://kythos.ai")
+                color: "#c8c8c8"
                 font.family: "DejaVu Sans"
                 font.pixelSize: 16
                 wrapMode: Text.WordWrap
@@ -48,14 +48,14 @@ Presentation {
     }
     Slide {
         anchors.fill: parent
-        Rectangle { anchors.fill: parent; color: "#0c1522" }
+        Rectangle { anchors.fill: parent; color: "#0b0b0b" }
         Column {
             anchors.centerIn: parent
             width: parent.width * 0.82
             spacing: 24
             Text {
                 text: qsTr("SECURITY YOU CAN INSPECT")
-                color: "#00d5e8"
+                color: "#ffffff"
                 font.family: "DejaVu Sans"
                 font.pixelSize: 12
                 font.weight: Font.DemiBold
@@ -64,7 +64,7 @@ Presentation {
             Text {
                 width: parent.width
                 text: qsTr("Know what your system is doing.")
-                color: "#f4faff"
+                color: "#ffffff"
                 font.family: "DejaVu Sans"
                 font.pixelSize: 29
                 font.weight: Font.DemiBold
@@ -73,7 +73,7 @@ Presentation {
             Text {
                 width: parent.width
                 text: qsTr("Audit logging and file integrity tools give you a starting point. After installation, run kythos-security-status to review the controls and their current state.")
-                color: "#b5c6d5"
+                color: "#c8c8c8"
                 font.family: "DejaVu Sans"
                 font.pixelSize: 17
                 wrapMode: Text.WordWrap
@@ -83,14 +83,14 @@ Presentation {
     }
     Slide {
         anchors.fill: parent
-        Rectangle { anchors.fill: parent; color: "#0c1522" }
+        Rectangle { anchors.fill: parent; color: "#0b0b0b" }
         Column {
             anchors.centerIn: parent
             width: parent.width * 0.82
             spacing: 24
             Text {
                 text: qsTr("YOUR NEXT CHAPTER")
-                color: "#00d5e8"
+                color: "#ffffff"
                 font.family: "DejaVu Sans"
                 font.pixelSize: 12
                 font.weight: Font.DemiBold
@@ -99,7 +99,7 @@ Presentation {
             Text {
                 width: parent.width
                 text: qsTr("Start lean. Make it yours.")
-                color: "#f4faff"
+                color: "#ffffff"
                 font.family: "DejaVu Sans"
                 font.pixelSize: 29
                 font.weight: Font.DemiBold
@@ -107,8 +107,8 @@ Presentation {
             }
             Text {
                 width: parent.width
-                text: qsTr("Your installed base opens at the terminal. Use cy to manage packages, kythos-hardware-status to inspect detected devices, and kythos-fido-login to enroll a security key for local login.")
-                color: "#b5c6d5"
+                text: qsTr("Your ISO edition determines the installed desktop and services. Use kythos-assist for local command guidance, kythos-hardware-status to inspect devices, and WiFi to connect to a wireless network.")
+                color: "#c8c8c8"
                 font.family: "DejaVu Sans"
                 font.pixelSize: 17
                 wrapMode: Text.WordWrap

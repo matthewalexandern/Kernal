@@ -1,0 +1,90 @@
+#!/usr/bin/python3
+"""Inspect PC/SC readers and OpenSC tokens; never request a PIN or alter a card."""
+
+import argparse
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+
+
+def probe(command, timeout=8):
+    try:
+        result = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True,
+                                text=True, timeout=timeout, env={**os.environ, "LC_ALL": "C"})
+        return {"returncode": result.returncode, "output": result.stdout[:32768],
+                "error": result.stderr[:2048]}
+    except subprocess.TimeoutExpired:
+        return {"returncode": None, "output": "", "error": "Probe timed out; no PIN was supplied."}
+    except OSError:
+        return {"returncode": None, "output": "", "error": "Probe could not be started."}
+
+
+def opensc_module(root=Path("/")):
+    for pattern in ("usr/lib/*/pkcs11/opensc-pkcs11.so", "usr/lib/*/opensc-pkcs11.so",
+                    "usr/lib/pkcs11/opensc-pkcs11.so", "usr/lib64/pkcs11/opensc-pkcs11.so"):
+        for module in sorted(root.glob(pattern)):
+            if module.is_file():
+                return str(module)
+    return None
+
+
+def collect(certificates=False, root=Path("/"), find=shutil.which, run=probe):
+    report = {"schema": 1, "mode": "read-only", "module": opensc_module(root),
+              "readers_observed": None, "reader_status": "unavailable", "probes": {},
+              "authentication": "not-tested", "signing": "not-tested",
+              "note": "Reader, token and certificate visibility do not prove authentication or signing. "
+                      "No PIN is requested or stored. Public certificate details may identify their owner."}
+    commands = {"pcsc_socket": ("systemctl", ["is-active", "pcscd.socket"]),
+                "readers": ("opensc-tool", ["--list-readers"]),
+                "p11_kit": ("p11-kit", ["list-modules"])}
+    for name, (tool, arguments) in commands.items():
+        executable = find(tool)
+        report["probes"][name] = (run([executable, *arguments]) if executable else
+                                  {"returncode": None, "output": "", "error": "Missing " + tool})
+    readers = report["probes"]["readers"]
+    if readers["returncode"] == 0:
+        report["readers_observed"] = sum(bool(re.match(r"^\s*\d+\s+", line))
+                                           for line in readers["output"].splitlines())
+        report["reader_status"] = "readers-detected" if report["readers_observed"] else "no-readers-detected"
+    executable = find("pkcs11-tool")
+    if report["module"] and executable:
+        prefix = [executable, "--module", report["module"]]
+        report["probes"]["slots"] = run([*prefix, "--list-slots"])
+        if certificates:
+            # Public certificate enumeration is explicit and uses no --login.
+            report["probes"]["certificates"] = run([*prefix, "--list-objects", "--type", "cert"])
+    else:
+        report["probes"]["slots"] = {"returncode": None, "output": "",
+                                     "error": "Missing OpenSC PKCS#11 module or pkcs11-tool; install opensc and opensc-pkcs11."}
+    return report
+
+
+def safe_terminal(value):
+    return "".join(character if character in "\n\t" or character.isprintable() else "?" for character in value)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--json", action="store_true", help="emit observations as JSON")
+    parser.add_argument("--certificates", action="store_true",
+                        help="explicitly enumerate public certificates; output may identify their owners")
+    args = parser.parse_args(argv)
+    report = collect(args.certificates)
+    if args.json:
+        print(json.dumps(report, indent=2))
+    else:
+        print("KythOS smart-card observations\nReaders: " + report["reader_status"])
+        print("OpenSC module: " + (report["module"] or "unavailable"))
+        for name, result in report["probes"].items():
+            print("\n" + name.replace("_", " ") + ":")
+            print(safe_terminal((result["output"] or result["error"] or "No objects reported.").rstrip()))
+        print("\n" + report["note"])
+        print("For card-dependent tests and application configuration, see docs/SMART-CARDS.md in the source recipe.")
+    return 0 if report["reader_status"] == "readers-detected" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

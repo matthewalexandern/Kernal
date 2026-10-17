@@ -35,6 +35,53 @@ during a build and is never committed.
 
 ## Build outputs
 
+Choose editions at build time, producing separate media. With no override the
+common console base remains the default on both architectures:
+
+```sh
+sudo env KYTHOS_EDITION=base LC_ALL=C.UTF-8 LANG=C.UTF-8 ./scripts/build.sh
+sudo env KYTHOS_EDITION=desktop LC_ALL=C.UTF-8 LANG=C.UTF-8 ./scripts/build.sh
+# In the separate native ARM64 Debian guest:
+sudo env KYTHOS_EDITION=base LC_ALL=C.UTF-8 LANG=C.UTF-8 ./scripts/build-arm64.sh
+```
+
+`base` and `desktop` are the implemented profiles; unknown editions fail before
+building. The desktop adds XFCE, LightDM, graphical networking and optional
+smart-card/application integrations. Server, hypervisor and AI workloads remain
+future edition work. There is no combined edition selector. Keep recovery and
+advanced installation entries. Version 0.2.0 names binaries
+`kythos-kernal-EDITION-0.2.0-ARCH.hybrid.iso`; each has corresponding source
+media. Stage overlays into the fresh build directory, never into tracked common
+configuration. Desktop display-stack roots move to installed package roots in
+that staging copy so removing the live installer cannot remove the desktop.
+LightDM is enabled for installed desktop boot and guarded against live boot.
+The common base continues to use `multi-user.target`.
+
+When a managed cloud egress proxy supplies a session CA, preserve TLS and APT
+signature verification. Supply the existing combined trust bundle to builder
+network tools and temporary chroot operations. Keep session proxy settings and
+CA files outside the source checkout and outside final live/source image
+payloads; inspect the completed images for residual build-only trust files.
+The 2027 candidate preparation uses read-only per-command CA/config bind mounts
+inside disposable builder chroots, removed when each command exits. Builder
+credentials and trust bindings are runtime inputs, not product policy.
+
+Container root is insufficient if its host kernel cannot check the firewall or
+mount the image formats. Use a full matching Debian guest when those checks
+fail; do not suppress source/image assertions to make a container pass. Track
+physical backing storage for sparse VM disks and completed source media; a
+virtual 64 GiB disk does not create physical capacity. Build architectures
+sequentially when needed, verify copied artifacts before reclaiming only owned
+temporary build directories, and retain both completed artifact sets.
+
+For a constrained sparse guest, `KYTHOS_ARTIFACT_MODE=hardlink` retains completed
+outputs as hardlinks within the same filesystem after all ISO/source audits.
+The default remains independent copies. Hardlink mode is recorded in build
+provenance, refuses existing artifact names, and does not support destinations on
+another filesystem. Treat both names as immutable. Export the artifact set over
+SSH and independently verify its complete checksum manifest before reclaiming
+owned build inputs. Removing an input name preserves the retained artifact.
+
 `scripts/build.sh` creates fresh root-only directories below
 `/var/lib/kythos-builder/builds/` and copies completed outputs below
 `/var/lib/kythos-builder/artifacts/`. A clean Git checkout uses its commit
@@ -175,19 +222,34 @@ base-files upgrades preserve KythOS Kernal branding. See
 
 ## Regenerating boot artwork
 
-The release images already contain checked-in boot artwork. Pillow is used by
-source validation and does not enter the live filesystem. When intentionally
-updating the approved source mark, regenerate every derived image in one pass:
-
-The package-install command below runs on the standard Debian build host.
-The installed KythOS operator command is `cy`.
+The checked-in white shield is a self-contained SVG source at
+`assets/branding/kythos-mark-white.svg`. Its monogram retains the original
+9:06 geometry; source provenance is documented in [BRANDING.md](BRANDING.md).
+Calamares uses the SVG directly. librsvg and Pillow render the bootloader,
+Plymouth and Debian Installer PNG variants, including small lower-right
+product text on boot backgrounds. These render tools run on the builder;
+they do not enter the installed system.
 
 ```sh
-sudo apt install python3-pil
+sudo apt install python3-pil librsvg2-bin fonts-dejavu-core
 python3 scripts/render-branding.py
+python3 tests/test-boot-artwork.py
 ./scripts/validate-source.sh
 ```
 
-The renderer never adds a product wordmark. Plymouth draws the trace, light
-sweep, breathing glow, and handoff fade from the transparent logo. Its prompt
-callbacks remain visible for encrypted-root passphrases and boot questions.
+The Plymouth theme displays supplied boot progress while it advances and a
+moving activity segment otherwise. Password/question callbacks retain a
+stable logo and readable white text. Esc uses Plymouth's normal details
+switch; GRUB also offers an explicit diagnostics entry. Recovery and other
+troubleshooting entries remain available.
+
+For an isolated interpreter check on a Debian builder with Plymouth installed:
+
+```sh
+KYTHOS_PLYMOUTH_PLUGIN=/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/plymouth/script.so \
+    python3 tests/test-plymouth-runtime.py
+```
+
+That test uses the real script, image, label and sprite libraries with a fake
+1280×720 window. It does not open a TTY or DRM device and is separate from the
+required ISO/VM boot-presentation and encrypted-install checks.

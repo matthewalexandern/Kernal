@@ -33,6 +33,12 @@ if [[ $(dpkg --print-architecture) != "$architecture" ]]; then
     exit 1
 fi
 export KYTHOS_ARCH=$architecture
+edition=${KYTHOS_EDITION:-base}
+edition_tool="$repo_root/config/includes.chroot/usr/local/libexec/kythos-edition"
+"$edition_tool" --edition "$edition" >/dev/null
+export KYTHOS_EDITION=$edition
+artifact_mode=${KYTHOS_ARTIFACT_MODE:-copy}
+case "$artifact_mode" in copy|hardlink) ;; *) printf 'Invalid artifact mode.\n' >&2; exit 1 ;; esac
 profile_tool="$repo_root/config/includes.chroot/usr/local/libexec/kythos-architecture"
 "$profile_tool" --arch "$architecture" >/dev/null
 
@@ -90,7 +96,7 @@ artifact_root=$(readlink -m -- \
     "${KYTHOS_ARTIFACT_ROOT:-"$trusted_root/artifacts/$run_id"}")
 version=$(cat "$repo_root/VERSION")
 snapshot=$(cat "$repo_root/SNAPSHOT")
-image_name="kythos-kernal-base-${version}"
+image_name="kythos-kernal-${edition}-${version}"
 if [[ ! $snapshot =~ ^[0-9]{8}T[0-9]{6}Z$ ]]; then
     printf '%s\n' 'SNAPSHOT must contain a UTC snapshot.debian.org timestamp.' >&2
     exit 1
@@ -165,6 +171,8 @@ cp -a "$repo_root/auto" "$repo_root/LICENSE" "$repo_root/NOTICE" \
 # Development imports must never add host Python bytecode to the image.
 rsync -a --exclude='__pycache__/' --exclude='*.py[cod]' \
     "$repo_root/config/" "$build_root/config/"
+python3 "$repo_root/scripts/stage-edition.py" --edition "$edition" \
+    "$build_root/config" > "$artifact_root/build-edition-profile.json"
 # A release build may start from a checkout owned by an unprivileged account.
 # Normalize the copied image recipe so no builder UID or private umask leaks
 # into the live filesystem or installer overlay.
@@ -220,10 +228,13 @@ install -o root -g root -m 0755 \
 source_recipe_root="$build_root/config/includes.source/kythos-recipe"
 required_source_recipe_files=(
     assets/branding/IMAGEGEN-PROMPT.md
+    assets/branding/kythos-mark-white.svg
     assets/branding/kythos-boot-source.png
     assets/branding/kythos-installer-banner-source.png
     assets/branding/kythos-mark-cyan-source.png
     scripts/render-branding.py
+    scripts/stage-edition.py
+    scripts/retain-build-output.py
     scripts/build.sh
     scripts/build-arm64.sh
     scripts/check-multiarch-pair.py
@@ -239,6 +250,8 @@ required_source_recipe_files=(
     docs/ARM64.md
     config/includes.chroot/usr/share/kythos/architecture-profiles.json
     config/includes.chroot/usr/local/libexec/kythos-architecture
+    config/includes.chroot/usr/share/kythos/edition-profiles.json
+    config/includes.chroot/usr/local/libexec/kythos-edition
     docs/COMMAND-SUGGESTIONS.md
     docs/CONSOLE.md
     config/includes.installer/etc/lsb-release
@@ -315,10 +328,11 @@ chmod -R u=rwX,go=rX "$source_recipe_root"
 (
     cd "$repo_root"
     {
-        find auto config scripts tests patches -type f \
+        find auto config scripts tests patches \( -type f -o -type l \) \
             ! -path '*/__pycache__/*' ! -name '*.pyc' ! -name '*.pyo' -print0
         printf '%s\0' \
             assets/branding/IMAGEGEN-PROMPT.md \
+            assets/branding/kythos-mark-white.svg \
             assets/branding/kythos-boot-source.png \
             assets/branding/kythos-installer-banner-source.png \
             assets/branding/kythos-mark-cyan-source.png \
@@ -398,6 +412,8 @@ install -m 0644 "$repo_root/patches/calamares/README.md" \
     printf 'source_git_state=%s\n' "$git_state"
     printf 'debian_snapshot=%s\n' "$snapshot"
     printf 'debian_architecture=%s\n' "$architecture"
+    printf 'edition=%s\n' "$edition"
+    printf 'artifact_output_mode=%s\n' "$artifact_mode"
     printf 'builder_execution=%s\n' "${KYTHOS_BUILDER_EXECUTION:-unspecified}"
     printf 'snapshot_debian=%s\n' \
         "https://snapshot.debian.org/archive/debian/$snapshot/"
@@ -494,7 +510,11 @@ done < <(find "$snapshot_metadata_directory" -maxdepth 1 \
 
 while IFS= read -r -d '' output
 do
-    cp -a "$output" "$artifact_root/"
+    # The audited live-build outputs are complete and never modified again.
+    # Optional hardlinks avoid a second multi-gigabyte copy in sparse guests;
+    # exported delivery copies still require independent checksum read-back.
+    python3 "$repo_root/scripts/retain-build-output.py" --mode "$artifact_mode" \
+        "$output" "$artifact_root"
 done < <(find "$build_root" -maxdepth 1 -type f \
     \( -name '*.iso' -o -name '*.img' -o -name '*.contents' \
        -o -name '*.packages' -o -name '*.files' -o -name '*.buildinfo' \

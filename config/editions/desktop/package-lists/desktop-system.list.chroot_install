@@ -1,0 +1,4 @@
+# Separate desktop ISO; never an installer edition selector.
+xfce4
+xfce4-terminal
+lightdm

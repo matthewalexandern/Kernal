@@ -1,0 +1,21 @@
+# Desktop Wi-Fi management (the common base already includes NetworkManager).
+network-manager-applet
+nm-connection-editor
+# Retain an authorization dialog even if desktop recommendations change.
+mate-polkit
+
+# Optional card authentication/signing. PC/SC is socket-activated; no PAM policy.
+opensc
+opensc-pkcs11
+pcscd
+pcsc-tools
+libccid
+p11-kit
+p11-kit-modules
+firefox-esr
+
+# Guest integrations activate only when the corresponding virtual channel exists.
+# Virtio/QXL DRM drivers come from the stock kernel, Mesa and Xorg packages.
+spice-vdagent
+qemu-guest-agent
+mesa-utils

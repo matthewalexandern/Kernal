@@ -1,0 +1,44 @@
+#!/usr/bin/python3
+"""Configure optional desktop PKCS#11 integrations during image building."""
+
+import json
+from pathlib import Path
+import re
+import subprocess
+
+
+def configure(root=Path("/"), installed_files=None):
+    if installed_files is None:
+        installed_files = subprocess.check_output(
+            ["dpkg-query", "--listfiles", "opensc-pkcs11"], text=True).splitlines()
+    candidates = [name for name in installed_files if name.startswith("/") and ".." not in Path(name).parts
+                  and name.endswith("/opensc-pkcs11.so") and (root / name.lstrip("/")).is_file()]
+    if not candidates:
+        raise ValueError("OpenSC PKCS#11 module is missing; refusing incomplete desktop integration.")
+    module = next((name for name in candidates if "/pkcs11/" in name), candidates[0])
+
+    # Prefer vendor registration; avoid showing each token twice through p11-kit.
+    definitions = []
+    for directory in (root / "usr/share/p11-kit/modules", root / "etc/pkcs11/modules"):
+        definitions.extend(directory.glob("*.module"))
+    registered = any(re.search(r"^\s*module:\s*[^\n]*opensc[^\n]*pkcs11", path.read_text(), re.M)
+                     for path in definitions)
+    definition = root / "etc/pkcs11/modules/opensc.module"
+    if not registered and definition.exists():
+        raise ValueError("An existing OpenSC module policy needs review; refusing to overwrite it.")
+
+    # Validate and merge before writing either file. Certificate trust, sites,
+    # PINs and login requirements remain user/site choices.
+    policy_file = root / "etc/firefox/policies/policies.json"
+    policy = json.loads(policy_file.read_text()) if policy_file.exists() else {}
+    policy.setdefault("policies", {}).setdefault("SecurityDevices", {}).setdefault("Add", {})["OpenSC"] = module
+    if not registered:
+        definition.parent.mkdir(parents=True, exist_ok=True)
+        definition.write_text("# KythOS optional smart-card integration\nmodule: " + module + "\n")
+    policy_file.parent.mkdir(parents=True, exist_ok=True)
+    policy_file.write_text(json.dumps(policy, indent=2) + "\n")
+    return module
+
+
+if __name__ == "__main__":
+    configure()

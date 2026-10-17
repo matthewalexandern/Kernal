@@ -1,5 +1,7 @@
 # Graphical boot with a visible encrypted-volume passphrase prompt.
 plymouth
 plymouth-themes
+# Script Image.Text requires this plugin, including encrypted-root prompts.
+plymouth-label
 # Boot and encryption prompts keep their font after the installer is removed.
 fonts-dejavu-core

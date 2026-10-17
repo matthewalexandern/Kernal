@@ -1,0 +1,65 @@
+{
+  "observed_utc": "2026-10-16T22:18:56.551487+00:00",
+  "source_commit": "b99b4b7ec90a11ef09ad3958e01ccc67363b55cd",
+  "source_clean": true,
+  "wrapper_sha256": "5b6fec84bdf13db964f786cb895e3cb819dac9f0244335634b55a0ca6247d26a",
+  "wrapper_uid": 0,
+  "wrapper_mode": "0o755",
+  "image_permit_present": false,
+  "live_build_stage_directories": {
+    "chroot": false,
+    "binary": false,
+    "source": false
+  },
+  "native_module_provenance": {
+    "architecture": "arm64",
+    "files": {
+      "partition/libcalamares_viewmodule_partition.so": "cd904ac746cb1dd5f9918e8baeaae061967b955e1bbfe40eea84d9978c3df014",
+      "partition/module.desc": "f2e35fa72e646c3c381c2c2b4fb41ec13eeee420b9357aab76e9ad6d4a439894"
+    },
+    "installed_boot_test": "not-run-by-module-build",
+    "native_target": "calamares_viewmodule_partition",
+    "patch": "0001-validate-proposed-boot-and-swap-layout.patch",
+    "patch_sha256": "2e744ea5507c35e4432c87d71376fb012ab07290203259232e5f41f56b9079a3",
+    "policy_test": "passed",
+    "required_runtime_package_version": "3.3.14-1",
+    "source_package": "calamares",
+    "source_version": "3.3.14-1",
+    "upstream_license": "GPL-3.0-or-later"
+  },
+  "native_module_hash_checks": {
+    "partition/libcalamares_viewmodule_partition.so": true,
+    "partition/module.desc": true
+  },
+  "module_elf_machine": 183,
+  "native_schema_tests_passed": 13,
+  "native_policy_assertions_passed": 7,
+  "source_gate": {
+    "python_tests": 272,
+    "groups": 21,
+    "failures": 0,
+    "skips": 0,
+    "passed": true
+  },
+  "raw_private_receipt_sha256": "0af194cb2012f52477c3ae014230a82b4f9a475250dcb6840e4066c327c9e884",
+  "sanitized_summary_created_utc": "2026-10-16T22:19:05.948881+00:00",
+  "gate_events": [
+    {
+      "utc": "2026-10-16T22:18:04.808693+00:00",
+      "action": "delegate-config",
+      "subcommand": "config"
+    },
+    {
+      "utc": "2026-10-16T22:18:07.366510+00:00",
+      "action": "delegate-config",
+      "subcommand": "config"
+    },
+    {
+      "utc": "2026-10-16T22:18:13.338300+00:00",
+      "action": "hold-before-image-stages",
+      "subcommand": "build"
+    }
+  ],
+  "runtime_values_omitted": true,
+  "scope": "Native Calamares module/link, schema and policy checks passed; image construction remains held and no ISO or installed boot acceptance is established."
+}

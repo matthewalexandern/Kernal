@@ -2,6 +2,7 @@
 """Local command proposals. Never execute a proposed command or read history."""
 
 import gzip
+import argparse
 import json
 import os
 from pathlib import Path
@@ -9,6 +10,7 @@ import re
 import shlex
 import stat
 import sys
+import subprocess
 import tempfile
 import unicodedata
 
@@ -24,6 +26,7 @@ MAX_TOKEN_LENGTH = 256
 MAX_PATH_DIRECTORIES = 128
 MAX_DIRECTORY_ENTRIES = 65536
 MAX_COMMANDS = 65536
+MAX_CONTEXT_BYTES = 131072
 SLOT = re.compile(r'^\{([a-z][a-z_]*)(\.\.\.)?\}$')
 USERNAME = re.compile(r'[A-Za-z_][A-Za-z0-9_.-]{0,31}\Z')
 PACKAGE = re.compile(r'[a-z0-9][a-z0-9+.-]*(?::[a-z0-9][a-z0-9-]*)?\Z')
@@ -262,12 +265,65 @@ def matching_metadata(name, index, path=None):
     expected = record.get('executable')
     if not expected or resolve_command(name, path) != expected:
         return {}
+    if not record.get('executable_signature') or file_signature(expected) != record['executable_signature']:
+        return {}
     if record.get('manual'):
         try:
             if not record.get('manual_file') or not Path(record['manual_file']).is_file():
                 return {}
+            if not record.get('manual_signature') or file_signature(record['manual_file']) != record['manual_signature']:
+                return {}
+            dependencies = record.get('manual_dependencies')
+            if not dependencies or any(file_signature(item[0]) != item[1] for item in dependencies):
+                return {}
         except (OSError, RuntimeError):
             return {}
+    return record
+
+
+def file_signature(path):
+    """Identity and change timestamps, not file contents or user command text."""
+    try:
+        value = Path(path).stat()
+        if not stat.S_ISREG(value.st_mode):
+            return None
+        return [value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns]
+    except (OSError, ValueError, RuntimeError):
+        return None
+
+
+def live_metadata(name, index, path=None, root=None):
+    """Read a newly installed manual on demand; a stale cache never supplies flags."""
+    record = matching_metadata(name, index, path)
+    if record.get('manual'):
+        return record
+    executable = resolve_command(name, path)
+    if not executable:
+        return {}
+    # A system manual must not be attached to a user executable of the same
+    # name. The index builder can associate fixture/custom documentation
+    # explicitly; live lookup is confined to standard packaged executable roots.
+    prefix = Path(executable).parent
+    if root is None:
+        if any(Path(executable).is_relative_to(base) for base in ('/usr/bin', '/usr/sbin', '/bin', '/sbin')):
+            root = MAN_ROOT
+        elif prefix.name in ('bin', 'sbin'):
+            root = prefix.parent / 'share/man'
+        else:
+            return {'executable': executable, 'description': '', 'options': [], 'actions': []}
+    root = Path(root)
+    record = {'executable': executable, 'executable_signature': file_signature(executable),
+              'description': '', 'options': [], 'actions': []}
+    for section in ('1', '8', '6'):
+        for suffix in ('.gz', ''):
+            manual = root / ('man' + section) / (name + '.' + section + suffix)
+            text = read_manual(manual, root)
+            if text:
+                record.update(manual_metadata(text, name))
+                record.update({'manual': name + '(' + section + ')', 'manual_file': str(manual.absolute()),
+                               'manual_root': str(root.absolute()), 'manual_signature': file_signature(manual),
+                               'manual_dependencies': manual_dependencies(manual, root)})
+                return record
     return record
 
 
@@ -332,6 +388,31 @@ def read_manual(path, root=MAN_ROOT, depth=0):
         return text
     except (OSError, EOFError, ValueError, RuntimeError):
         return ''
+
+
+def manual_dependencies(path, root=MAN_ROOT, depth=0):
+    """Track .so data includes too, so target changes invalidate cached flags."""
+    try:
+        path, root = Path(path).resolve(), Path(root).resolve()
+        if depth > 4 or not path.is_relative_to(root) or not path.is_file():
+            return []
+        dependencies = [[str(path), file_signature(path)]]
+        opener = gzip.open if path.suffix == '.gz' else open
+        with opener(path, 'rb') as source:
+            raw = source.read(MAX_MAN_BYTES + 1)
+        if len(raw) > MAX_MAN_BYTES:
+            return []
+        body = [line for line in raw.decode('utf-8', 'replace').splitlines()
+                if line.strip() and not line.startswith('.\\"')]
+        if len(body) == 1 and body[0].startswith('.so '):
+            target = root / body[0].split(None, 1)[1].strip()
+            if not target.exists() and not str(target).endswith('.gz'):
+                target = Path(str(target) + '.gz')
+            included = manual_dependencies(target, root, depth + 1)
+            return dependencies + included if included else []
+        return dependencies
+    except (OSError, EOFError, ValueError, RuntimeError):
+        return []
 
 
 def manual_metadata(text, command=None):
@@ -478,10 +559,14 @@ def build_command_index(commands, root=MAN_ROOT, path=None):
                 metadata = manual_metadata(text, name)
                 metadata['manual'] = name + '(' + section + ')'
                 metadata['manual_file'] = str(manual.absolute())
+                metadata['manual_root'] = str(root.absolute())
+                metadata['manual_signature'] = file_signature(manual)
+                metadata['manual_dependencies'] = manual_dependencies(manual, root)
                 metadata['actions'] = sorted({action[len(name) + 1:] if action.startswith(name + '-') else action
                                               for action in metadata['actions']})
                 break
         metadata['executable'] = resolve_command(name, path)
+        metadata['executable_signature'] = file_signature(metadata['executable']) if metadata['executable'] else None
         entries[name] = metadata
     return {'schema_version': 1, 'commands': entries}
 
@@ -525,12 +610,31 @@ def load_command_index(path=COMMAND_INDEX):
                     len(manual_file) > MAX_INPUT_BYTES or not os.path.isabs(manual_file) or
                     any(unicodedata.category(c) in ('Cc', 'Cf') for c in manual_file)):
                 return {}
+            manual_root = record.get('manual_root')
+            if manual_root is not None and (not isinstance(manual_root, str) or not os.path.isabs(manual_root) or
+                    len(manual_root) > MAX_INPUT_BYTES or any(unicodedata.category(c) in ('Cc', 'Cf') for c in manual_root)):
+                return {}
             for key, maximum, pattern in (('options', 512, OPTION_NAME),
                                           ('actions', 256, COMMAND_NAME)):
                 items = record.get(key, [])
                 if (not isinstance(items, list) or len(items) > maximum or
                         any(not isinstance(item, str) or len(item) > MAX_TOKEN_LENGTH or
                             not re.fullmatch(pattern, item) for item in items)):
+                    return {}
+            for key in ('executable_signature', 'manual_signature'):
+                signature = record.get(key)
+                if signature is not None and (not isinstance(signature, list) or len(signature) != 5 or
+                        any(type(item) is not int or item < 0 for item in signature)):
+                    return {}
+            dependencies = record.get('manual_dependencies', [])
+            if not isinstance(dependencies, list) or len(dependencies) > 5:
+                return {}
+            for item in dependencies:
+                if (not isinstance(item, list) or len(item) != 2 or not isinstance(item[0], str) or
+                        not os.path.isabs(item[0]) or len(item[0]) > MAX_INPUT_BYTES or
+                        any(unicodedata.category(c) in ('Cc', 'Cf') for c in item[0]) or
+                        not isinstance(item[1], list) or len(item[1]) != 5 or
+                        any(type(number) is not int or number < 0 for number in item[1])):
                     return {}
         return entries
     except (OSError, ValueError, TypeError, RecursionError):
@@ -574,7 +678,7 @@ def documented_typo(tokens, commands, index, path=None):
     # bracket pattern as a literal while correcting another word changes argv.
     if any('[' in token or ']' in token for token in tokens[offset + 1:]):
         return None
-    record = matching_metadata(tokens[offset], index, path)
+    record = live_metadata(tokens[offset], index, path)
     argv = tokens.copy()
     # End-of-options and literal values stay under the command's own parser.
     end = argv.index('--', offset + 1) if '--' in argv[offset + 1:] else len(argv)
@@ -612,7 +716,7 @@ def command_help(phrase, *, path=None, index=None):
     offset = 1 if tokens and tokens[0] == 'sudo' else 0
     if len(tokens) > offset and tokens[offset] in commands:
         name = tokens[offset]
-        record = matching_metadata(name, index, path)
+        record = live_metadata(name, index, path)
         lines = [name + (' - ' + record['description'] if record.get('description') else ' - installed command')]
         for label, key in (('Subcommands', 'actions'), ('Options', 'options')):
             values = record.get(key, [])
@@ -639,6 +743,8 @@ def command_help(phrase, *, path=None, index=None):
 
 
 def suggest(phrase, catalogue, *, root=None, path=None, index=None):
+    if sensitive_line(phrase):
+        return None
     tokens = tokenize(phrase)
     if not tokens:
         return None
@@ -670,7 +776,8 @@ def suggest(phrase, catalogue, *, root=None, path=None, index=None):
     # available because their intended literal argument is known.
     if any('[' in token or ']' in token for token in tokens[offset + 1:]):
         return None
-    candidates = sorted(c for c in commands if one_edit(tokens[offset], c) == 1)
+    case_matches = sorted(c for c in commands if c.casefold() == tokens[offset].casefold())
+    candidates = case_matches or sorted(c for c in commands if one_edit(tokens[offset], c) == 1)
     if not candidates:
         return None
     if len(candidates) > 1:
@@ -687,8 +794,509 @@ def suggest(phrase, catalogue, *, root=None, path=None, index=None):
             'intent': 'command-typo'}
 
 
+def parse_shell_line(line):
+    """Describe shell syntax as data, preserving quoted operator arguments.
+
+    This is a bounded inspector, never a shell parser for execution. Expansions,
+    grouping, compound commands and here-documents are explicitly uncertain.
+    """
+    if not isinstance(line, str) or len(line.encode('utf-8')) > MAX_INPUT_BYTES:
+        return {'segments': [], 'warnings': ['Input exceeds the inspection limit.']}
+    warnings, words, current = [], [], []
+    start, quote, quoted, offset = None, None, False, 0
+    operators = ('&>>', '<<<', '>>', '<<', '&&', '||', '|&', '>&', '<&', '<>', '&>', '|', '>', '<', ';', '&')
+
+    def flush(end):
+        nonlocal current, start, quoted
+        if start is not None:
+            words.append(('word', ''.join(current), start, end, quoted))
+        current, start, quoted = [], None, False
+
+    while offset < len(line):
+        char = line[offset]
+        if unicodedata.category(char) in ('Cc', 'Cf') and char != '\t':
+            warnings.append('Control characters or multiple lines are outside safe inspection.')
+            return {'segments': [], 'warnings': warnings}
+        if quote == "'":
+            if char == quote:
+                quote = None
+            else:
+                current.append(char)
+            offset += 1
+            continue
+        if char == '\\':
+            if start is None:
+                start = offset
+            quoted = True
+            if offset + 1 >= len(line):
+                warnings.append('The final escape is incomplete.')
+                break
+            following = line[offset + 1]
+            if quote == '"' and following not in '$`"\\\n':
+                current.append('\\')
+            current.append(following)
+            offset += 2
+            continue
+        if quote == '"':
+            if char == '"':
+                quote = None
+            else:
+                current.append(char)
+                if char in '$`':
+                    warnings.append('Shell expansion is present; values are not evaluated.')
+            offset += 1
+            continue
+        if char in "'\"":
+            if start is None:
+                start = offset
+            quote, quoted = char, True
+            offset += 1
+            continue
+        if char.isspace():
+            flush(offset)
+            offset += 1
+            continue
+        if char == '#' and start is None:
+            break
+        operator = next((item for item in operators if line.startswith(item, offset)), None)
+        if operator:
+            flush(offset)
+            words.append(('operator', operator, offset, offset + len(operator), False))
+            offset += len(operator)
+            continue
+        if start is None:
+            start = offset
+        current.append(char)
+        if char in '$`':
+            warnings.append('Shell expansion is present; values are not evaluated.')
+        elif char in '(){}':
+            warnings.append('Grouping or compound syntax is outside this literal inspection.')
+        elif char in '*?[' or char == '~' and len(current) == 1:
+            warnings.append('Path expansion is left to the shell; matched files are not guessed.')
+        offset += 1
+    flush(offset)
+    if quote:
+        warnings.append('A quote is incomplete; close it before execution.')
+    segments, segment, position = [], {'argv': [], 'quoted': [], 'redirections': [], 'operator': None}, 0
+    while position < len(words):
+        kind, value, begin, end, quoted = words[position]
+        if kind == 'operator' and value in ('|', '|&', '&&', '||', ';', '&'):
+            segment['operator'] = value
+            if segment['argv'] or segment['redirections']:
+                segments.append(segment)
+            else:
+                warnings.append('A shell operator has no preceding command.')
+            segment = {'argv': [], 'quoted': [], 'redirections': [], 'operator': None}
+        elif kind == 'operator':
+            descriptor = ''
+            if (position and words[position - 1][0] == 'word' and words[position - 1][1].isdigit()
+                    and words[position - 1][3] == begin and not words[position - 1][4] and segment['argv']):
+                descriptor = segment['argv'].pop()
+                segment['quoted'].pop()
+            target = None
+            if position + 1 < len(words) and words[position + 1][0] == 'word':
+                position += 1
+                target = words[position][1]
+            else:
+                warnings.append('A redirection requires a target.')
+            segment['redirections'].append({'operator': descriptor + value, 'target': target})
+            if value in ('<<', '<<<'):
+                warnings.append('Here-document and here-string contents are not inspected.')
+        else:
+            segment['argv'].append(value)
+            segment['quoted'].append(quoted)
+        position += 1
+    if segment['argv'] or segment['redirections']:
+        segments.append(segment)
+    elif words and words[-1][1] in ('|', '|&', '&&', '||'):
+        warnings.append('The final operator requires another command.')
+    if len(words) > MAX_TOKENS * 4 or len(segments) > 16:
+        return {'segments': [], 'warnings': ['The shell expression exceeds inspection limits.']}
+    return {'segments': segments, 'warnings': list(dict.fromkeys(warnings))}
+
+
+def clean_shell_context(value):
+    """Shell names and literal completion words only, never definitions/bodies."""
+    result = {key: [] for key in ('builtins', 'aliases', 'functions', 'keywords')}
+    result['completions'] = {}
+    if not isinstance(value, dict):
+        return result
+    for key in ('builtins', 'aliases', 'functions', 'keywords'):
+        names = value.get(key, [])
+        if isinstance(names, list):
+            result[key] = sorted({name for name in names[:2048]
+                                  if isinstance(name, str) and COMMAND_NAME.fullmatch(name)})
+    completions = value.get('completions', {})
+    if isinstance(completions, dict):
+        for name, record in list(completions.items())[:2048]:
+            if not isinstance(name, str) or not COMMAND_NAME.fullmatch(name) or not isinstance(record, dict):
+                continue
+            words = record.get('words', [])
+            result['completions'][name] = {
+                'dynamic': record.get('dynamic') is True,
+                'words': sorted({word for word in words[:512] if isinstance(word, str) and
+                                 re.fullmatch(r'[A-Za-z0-9_./:+-]{1,128}', word)}) if isinstance(words, list) else []}
+    return result
+
+
+def context_protocol(raw):
+    """Decode NUL-separated Bash builtin output without eval or temp files."""
+    if len(raw) > MAX_CONTEXT_BYTES:
+        raise ValueError('shell context exceeds its inspection limit')
+    fields = raw.decode('utf-8', errors='strict').split('\0')
+    if len(fields) < 4:
+        raise ValueError('invalid shell context')
+    mode, status, line = fields[:3]
+    context = {key: [] for key in ('builtins', 'aliases', 'functions', 'keywords')}
+    context['completions'] = {}
+    for field in fields[3:]:
+        kind, separator, name = field.partition(':')
+        if not separator:
+            continue
+        if kind in context and kind != 'completions':
+            context[kind].append(name)
+        elif kind == 'completion':
+            try:
+                tokens = shlex.split(name)
+            except ValueError:
+                continue
+            if tokens[:1] != ['complete'] or len(tokens) > 1024:
+                continue
+            words, dynamic, names, position = [], False, [], 1
+            # complete -p emits quoted data. Do not source it or call its -F/-C
+            # callbacks. -W expansions are not evaluated either.
+            options_with_value = {'-A', '-G', '-W', '-F', '-C', '-X', '-P', '-S', '-o'}
+            while position < len(tokens):
+                token = tokens[position]
+                if token in options_with_value and position + 1 < len(tokens):
+                    position += 1
+                    if token == '-W':
+                        if not any(char in tokens[position] for char in '$`\\*?[]~'):
+                            words.extend(tokens[position].split())
+                    elif token in ('-F', '-C'):
+                        dynamic = True
+                elif not token.startswith('-'):
+                    names.append(token)
+                position += 1
+            for command in names:
+                context['completions'][command] = {'words': words, 'dynamic': dynamic}
+    return mode, int(status) if status.isdigit() else None, line, clean_shell_context(context)
+
+
+def sensitive_line(line):
+    # Do not repeat credential-bearing argument strings in correction previews.
+    return bool(re.search(r'(?i)(?:--?\S*(?:password|passwd|secret|token|credential|authorization)|(?:^|\s)-[upH](?:\s|\S)|[A-Za-z][A-Za-z0-9+.-]*://[^\s/@:]+:[^\s/@]+@)', line))
+
+
+def package_identity(executable):
+    """Use only the fixed root-controlled package database reader, never --version."""
+    reader = Path('/usr/bin/dpkg-query')
+    try:
+        info = reader.stat()
+        if info.st_uid != 0 or info.st_mode & 0o022 or not stat.S_ISREG(info.st_mode):
+            return None
+        if not any(Path(executable).is_relative_to(base) for base in ('/usr/bin', '/usr/sbin', '/bin', '/sbin')):
+            return None
+        environment = {'PATH': '/usr/bin:/bin', 'LC_ALL': 'C'}
+        found = subprocess.run([str(reader), '--search', executable], stdin=subprocess.DEVNULL,
+                               capture_output=True, timeout=0.4, env=environment, check=False)
+        if found.returncode and executable.startswith('/usr/'):
+            found = subprocess.run([str(reader), '--search', executable[4:]], stdin=subprocess.DEVNULL,
+                                   capture_output=True, timeout=0.4, env=environment, check=False)
+        if found.returncode or len(found.stdout) > 8192:
+            return None
+        owner = found.stdout.decode('utf-8', 'replace').split(': ', 1)[0]
+        if not PACKAGE.fullmatch(owner):
+            return None
+        version = subprocess.run([str(reader), '--show', '--showformat=${binary:Package} ${Version}', owner],
+                                 stdin=subprocess.DEVNULL, capture_output=True, timeout=0.4,
+                                 env=environment, check=False)
+        text = version.stdout.decode('utf-8', 'replace')
+        if version.returncode == 0 and re.fullmatch(r'[A-Za-z0-9.+:~_-]+ [A-Za-z0-9.+:~_-]+', text):
+            return text
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
+def flag_explanation(record, flag):
+    if not record.get('manual_file'):
+        return None
+    text = read_manual(record['manual_file'], record.get('manual_root', MAN_ROOT))
+    lines = text.splitlines()
+    for position, raw in enumerate(lines):
+        if flag not in plain_manual(raw).split() and not re.search(re.escape(flag) + r'(?:[ =,\"]|$)', plain_manual(raw)):
+            continue
+        # Require a declaration, not an arbitrary mention in a prose paragraph.
+        if not raw.startswith(('.B ', '.BR ', '.BI ', '.It Fl ', '.IP ')):
+            continue
+        prose = []
+        for following in lines[position + 1:position + 9]:
+            if following.startswith(('.TP', '.IP', '.It ', '.SH ', '.SS ', '.Sh ', '.Ss ')):
+                break
+            if following.startswith(('.\\', '.B ', '.BR ', '.BI ')):
+                continue
+            value = plain_manual(following)
+            if value:
+                prose.append(value)
+        if prose:
+            return ' '.join(prose)[:360]
+    return None
+
+
+def subcommand_metadata(name, arguments, record):
+    """Consult a separate manual only for a documented command declaration."""
+    if not arguments or arguments[0] not in record.get('actions', []) or not record.get('manual_root'):
+        return record
+    manual_name = name + '-' + arguments[0]
+    if not COMMAND_NAME.fullmatch(manual_name):
+        return record
+    root = Path(record['manual_root'])
+    for section in ('1', '8', '6'):
+        for suffix in ('.gz', ''):
+            manual = root / ('man' + section) / (manual_name + '.' + section + suffix)
+            text = read_manual(manual, root)
+            if text:
+                child = dict(record)
+                child.update(manual_metadata(text, manual_name))
+                child.update({'manual': manual_name + '(' + section + ')', 'manual_file': str(manual),
+                              'manual_signature': file_signature(manual),
+                              'manual_dependencies': manual_dependencies(manual, root)})
+                return child
+    return record
+
+
+def command_offset(argv, quoted=None):
+    offset = 0
+    while (offset < len(argv) and not (quoted and quoted[offset]) and
+           re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*=.*', argv[offset])):
+        offset += 1
+    if offset < len(argv) and argv[offset] in ('sudo', 'command', 'builtin'):
+        if offset + 1 < len(argv) and not argv[offset + 1].startswith('-'):
+            offset += 1
+    return offset
+
+
+def shell_kind(name, argv, offset, shell):
+    """Respect wrappers that bypass aliases/functions or request builtins."""
+    wrapper = argv[offset - 1] if offset else None
+    keys = (('aliases', 'alias'), ('functions', 'function'), ('builtins', 'builtin'), ('keywords', 'keyword'))
+    for key, label in keys:
+        if wrapper == 'sudo' or wrapper == 'command' and key in ('aliases', 'functions', 'keywords'):
+            continue
+        if wrapper == 'builtin' and key != 'builtins':
+            continue
+        if name in shell[key]:
+            return label
+    return None
+
+
+def assist(line, mode='explain', status=None, shell=None, path=None, index=None, catalogue=None):
+    """Extensible local assistance, deliberately independent of command execution."""
+    result = {'title': 'KythOS local command assistance', 'lines': [], 'candidates': [], 'proposal': None}
+    lines = result['lines']
+    shell = clean_shell_context(shell)
+    parsed = parse_shell_line(line)
+    lines.extend(parsed['warnings'])
+    if mode not in ('explain', 'complete', 'intent', 'diagnose'):
+        lines.append('Unknown assistance mode. Use explain, complete, intent, or diagnose.')
+        return result
+    index = load_command_index() if index is None else index
+    commands, complete = discover_commands(path)
+    shell_names = set().union(*(set(shell[key]) for key in ('builtins', 'aliases', 'functions', 'keywords')))
+    if not complete:
+        lines.append('Executable discovery was bounded; use native shell completion for remaining entries.')
+    if mode == 'intent':
+        if parsed['warnings'] or sensitive_line(line):
+            lines.append('This request needs manual inspection; no command is proposed.')
+            return result
+        if (len(parsed['segments']) != 1 or parsed['segments'][0]['redirections'] or
+                parsed['segments'][0]['operator']):
+            lines.append('This shell expression needs explicit inspection. Use --explain for pipelines, conditionals and redirections; no command is proposed.')
+            return result
+        if parsed['segments']:
+            argv = parsed['segments'][0]['argv']
+            offset = command_offset(argv, parsed['segments'][0]['quoted'])
+            if len(argv) > offset and shell_kind(argv[offset], argv, offset, shell):
+                lines.append('This name resolves to a shell builtin, keyword, alias or function. Its native behavior takes precedence; inspect it deliberately with help or type and use native Tab.')
+                return result
+        if catalogue is None:
+            try:
+                catalogue = load_catalogue()
+            except (OSError, ValueError):
+                catalogue = {'intents': [], 'command_actions': []}
+        try:
+            proposal = suggest(line, catalogue, path=path, index=index)
+        except ValueError:
+            proposal = None
+        if proposal:
+            result['proposal'] = proposal
+            lines.append(proposal['message'])
+        else:
+            lines.extend(command_help(line, path=path, index=index).splitlines())
+            lines.append('Description matches are leads, not an inferred argument grammar. Review local documentation.')
+        return result
+    segments = parsed['segments']
+    if mode == 'complete':
+        if parsed['warnings'] or not segments:
+            lines.append('Native Tab remains available. Incomplete or expanding syntax is not rewritten.')
+            return result
+        argv = segments[-1]['argv']
+        offset = command_offset(argv, segments[-1]['quoted'])
+        trailing_space = bool(line and line[-1].isspace())
+        if len(argv) <= offset + 1 and not trailing_space:
+            prefix = argv[offset] if len(argv) > offset else ''
+            result['candidates'] = sorted(name for name in commands | shell_names if name.startswith(prefix))[:64]
+        elif len(argv) > offset:
+            name = argv[offset]
+            prefix = '' if trailing_space else argv[-1]
+            metadata = {} if shell_kind(name, argv, offset, shell) else live_metadata(name, index, path)
+            metadata = subcommand_metadata(name, argv[offset + 1:-1] if not trailing_space else argv[offset + 1:], metadata)
+            completion = shell['completions'].get(name, {})
+            words = set(completion.get('words', []))
+            if prefix.startswith('-'):
+                words.update(metadata.get('options', []))
+            elif len(argv) <= offset + 2:
+                words.update(metadata.get('actions', []))
+            result['candidates'] = sorted(value for value in words if value.startswith(prefix))[:64]
+            if completion.get('dynamic'):
+                lines.append('A dynamic shell completion is registered. Native Tab invokes it using normal shell rules.')
+        lines.append('Candidates are local names or documented declarations; none are executed or inserted.')
+        if not result['candidates']:
+            lines.append('No confident metadata completion. Native Tab can still complete files and command-specific context.')
+        return result
+    if mode == 'diagnose':
+        details = {
+            0: 'Exit status 0 reports success; inspect the command output if its result was unexpected.',
+            1: 'Exit status 1 is command-specific. It may indicate failure or a normal no-match result; consult this command’s manual.',
+            2: 'Exit status 2 often indicates syntax or usage failure; confirm the documented options and required arguments.',
+            126: 'Exit status 126 means the shell found a command but could not execute it. Check execute permissions, directory traversal permissions, mount noexec, interpreter and architecture.',
+            127: 'Exit status 127 usually means command not found. Check spelling, PATH, package installation, and any missing script interpreter.',
+            130: 'Exit status 130 commonly means interruption by Ctrl-C (SIGINT).',
+            137: 'Exit status 137 commonly means SIGKILL. Inspect memory pressure and service or kernel logs for an OOM kill.',
+            139: 'Exit status 139 commonly means SIGSEGV. Check the exact binary version and collect a permitted crash report.'}
+        lines.append(details.get(status, 'A nonzero status alone cannot identify the cause. Consult command output and the local manual.'))
+        if status is None:
+            lines.append('Supply --status N from the failed command; history and prior output are not collected.')
+    if len(segments) > 1:
+        lines.append('Pipeline/conditional: each segment has its own arguments. A pipeline normally reports its final status; Bash pipefail and PIPESTATUS expose earlier failures.')
+    for segment in segments:
+        argv = segment['argv']
+        offset = command_offset(argv, segment['quoted'])
+        if offset >= len(argv):
+            lines.append('This segment contains assignments or redirections without an inspectable command.')
+            continue
+        name = argv[offset]
+        if not COMMAND_NAME.fullmatch(name):
+            lines.append('An explicit path or compound command needs its own documentation; no command name is guessed.')
+            continue
+        kind = shell_kind(name, argv, offset, shell)
+        if kind:
+            lines.append(name + ' is a shell ' + kind + '. Definitions are not read or executed; inspect deliberately with type ' + name + '.')
+            if name in shell['builtins']:
+                lines.append('Bash documents this builtin with: help ' + name)
+            continue
+        executable = resolve_command(name, path)
+        if not executable:
+            lines.append(name + ': not found in the current PATH. Check spelling and installation; aliases/functions are visible when called through interactive Bash.')
+            continue
+        record = live_metadata(name, index, path)
+        record = subcommand_metadata(name, argv[offset + 1:], record)
+        lines.append(name + (' - ' + record['description'] if record.get('description') else ' - installed command'))
+        version = package_identity(executable)
+        lines.append('Installed package/version: ' + version if version else 'Installed version is unknown from local package metadata; the executable is never probed.')
+        if not record.get('manual'):
+            lines.append('No packaged manual metadata is available. Flags and subcommands are uncertain; no syntax is invented.')
+        else:
+            lines.append('Local documentation: man ' + record['manual'].split('(', 1)[0] + '. Metadata matches the resolved executable and current manual.')
+        supplied_flags = [arg.partition('=')[0] for arg in argv[offset + 1:] if arg.startswith('-') and arg != '--']
+        for flag in list(dict.fromkeys(supplied_flags))[:12]:
+            if not OPTION_NAME.fullmatch(flag):
+                continue
+            if re.search(r'(?i)password|passwd|secret|token|credential|authorization', flag):
+                lines.append('A credential-related option is present; its spelling and values are not repeated. Consult the local manual.')
+                continue
+            if flag in record.get('options', []):
+                explanation = flag_explanation(record, flag)
+                lines.append(flag + ': ' + (explanation or 'declared in the local manual; consult it for values and command-specific scope.'))
+            else:
+                lines.append(flag + ': not established by available declarations. It may be a bundled option, a literal value, or undocumented; support is uncertain.')
+        if not supplied_flags and record.get('actions'):
+            lines.append('Documented subcommands: ' + ' '.join(record['actions'][:24]))
+        if not supplied_flags and record.get('options'):
+            lines.append('Documented options: ' + ' '.join(record['options'][:24]))
+        if shell['completions'].get(name):
+            lines.append('Shell completion metadata is available; native Tab preserves its command-specific behavior.')
+        for argument in argv[offset + 1:]:
+            # Only explicitly supplied path-like literals are checked. No
+            # directory listing, file contents, globbing or credential reads.
+            if argument.startswith(('/', './', '../')) and not parsed['warnings']:
+                try:
+                    if not Path(argument).exists():
+                        lines.append('A literal path argument does not exist in the current directory context; it may be an intended output path.')
+                    elif not os.access(argument, os.R_OK):
+                        lines.append('A literal path argument is not readable with the current user permissions.')
+                except (OSError, ValueError):
+                    lines.append('A literal path could not be inspected with current permissions.')
+        for redirection in segment['redirections']:
+            operator = redirection['operator']
+            if operator.endswith(('>&', '<&')):
+                lines.append('Redirection ' + operator + ': duplicate or close a file descriptor; the target is a descriptor, not an output filename.')
+            else:
+                lines.append('Redirection ' + operator + ': the shell opens the target before running the command; sudo on the command does not elevate that open operation.')
+            if '>' in operator and '>>' not in operator and '&' not in operator:
+                lines.append('Output redirection may create or truncate its target; no files are opened by this assistant.')
+        if argv[:offset] and argv[0] == 'sudo':
+            lines.append('sudo changes command privileges subject to policy; permissions are not bypassed by assistance.')
+    if not segments:
+        lines.append('Type a command, or use --intent with description words. This assistant works offline and never executes inspected commands.')
+    if sensitive_line(line):
+        lines.append('Possible credential arguments are not repeated in diagnostics or correction previews.')
+    return result
+
+
+def assist_main(argv):
+    parser = argparse.ArgumentParser(prog='kythos-assist', description='Offline command inspection; no inspected command is executed.')
+    modes = parser.add_mutually_exclusive_group()
+    for name in ('explain', 'complete', 'intent', 'diagnose'):
+        modes.add_argument('--' + name, dest='mode', action='store_const', const=name)
+    parser.set_defaults(mode='explain')
+    parser.add_argument('--status', type=int, help='explicit exit status for diagnosis')
+    parser.add_argument('--json', action='store_true', help='machine-readable local result')
+    parser.add_argument('line', nargs=argparse.REMAINDER, help='command line as a quoted string, or command and its arguments')
+    options = parser.parse_args(argv)
+    words = options.line[1:] if options.line[:1] == ['--'] else options.line
+    line = words[0] if len(words) == 1 else shlex.join(words)
+    result = assist(line, options.mode, options.status)
+    render_assistance(result, options.json)
+    return 0
+
+
+def render_assistance(result, as_json=False):
+    if as_json:
+        print(json.dumps(result, ensure_ascii=True, sort_keys=True))
+        return
+    print(result['title'])
+    for line in result['lines']:
+        print(line)
+    if result['candidates']:
+        print('Candidates: ' + ' '.join(result['candidates']))
+    if result['proposal'] and result['proposal'].get('command'):
+        print('Proposed (review and type deliberately): ' + result['proposal']['command'])
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ['--assist']:
+        return assist_main(argv[1:])
+    if argv in (['--assist-shell'], ['--assist-shell-json']):
+        try:
+            mode, status, line, context = context_protocol(sys.stdin.buffer.read(MAX_CONTEXT_BYTES + 1))
+            render_assistance(assist(line, mode, status, context), argv == ['--assist-shell-json'])
+            return 0
+        except (ValueError, OSError, TypeError):
+            print('KythOS assistance: local shell context is unavailable; native shell behavior is preserved.', file=sys.stderr)
+            return 2
     if argv not in (['--json'], ['--shell'], ['--help-line'], ['--refresh-index']):
         print('Usage: kythos-command-suggest --json | --shell | --help-line < command-line; --refresh-index', file=sys.stderr)
         return 2
@@ -702,7 +1310,14 @@ def main(argv=None):
             raise ValueError('phrase is too long')
         phrase = raw.decode('utf-8', errors='strict')
         if argv == ['--help-line']:
-            print(command_help(phrase))
+            parsed = parse_shell_line(phrase.rstrip('\r\n'))
+            first = parsed['segments'][0]['argv'] if parsed['segments'] else []
+            offset = command_offset(first, parsed['segments'][0]['quoted']) if first else 0
+            if (parsed['warnings'] or len(parsed['segments']) > 1 or
+                    len(first) > offset and resolve_command(first[offset])):
+                render_assistance(assist(phrase.rstrip('\r\n')))
+            else:
+                print(command_help(phrase))
             return 0
         result = suggest(phrase, load_catalogue())
     except (ValueError, OSError, KeyError, TypeError) as exc:

@@ -2,6 +2,62 @@
 # Tab previews; a second Tab or Right accepts. Only ordinary Enter executes.
 [ -n "${BASH_VERSION:-}" ] || return 0
 case $- in *i*) ;; *) return 0 ;; esac
+
+# This explicit interface also works with custom bindings, vi mode, or disabled
+# suggestions. Only names and completion declarations travel over an anonymous
+# pipe. No history, function bodies, alias expansions, environment dump, error
+# output, or files from the working directory are collected.
+function __kythos_assist {
+    local mode=explain status= json= name item key count line
+    while (( $# )); do
+        case $1 in
+            --explain|--complete|--intent|--diagnose) mode=${1#--}; shift ;;
+            --status)
+                if (( $# < 2 )) || [[ ! $2 =~ ^[0-9]{1,3}$ ]]; then
+                    builtin printf '%s\n' 'Usage: kythos-assist [--explain|--complete|--intent|--diagnose] [--status N] command-line' >&2
+                    return 2
+                fi
+                status=$2; shift 2 ;;
+            --json) json=-json; shift ;;
+            --help|-h) command /usr/local/libexec/kythos-command-suggest --assist --help; return ;;
+            --) shift; break ;;
+            *) break ;;
+        esac
+    done
+    if (( $# <= 1 )); then
+        line=${1-}
+    else
+        # Keep distinct argv values distinct when the user supplies a command
+        # and arguments rather than one quoted shell expression.
+        builtin printf -v line '%q ' "$@"
+        line=${line% }
+    fi
+    {
+        builtin printf '%s\0%s\0%s\0' "$mode" "$status" "$line"
+        for key in builtins aliases functions keywords; do
+            case $key in
+                builtins) item=builtin ;; aliases) item=alias ;;
+                functions) item=function ;; keywords) item=keyword ;;
+            esac
+            count=0
+            while IFS= read -r name; do
+                [[ $name =~ ^[a-zA-Z0-9][a-zA-Z0-9_.+-]{0,254}$ ]] || continue
+                builtin printf '%s:%s\0' "$key" "$name"
+                (( ++count < 2048 )) || break
+            done < <(builtin compgen -A "$item")
+        done
+        count=0
+        while IFS= read -r item; do
+            (( ${#item} <= 4096 )) || continue
+            builtin printf 'completion:%s\0' "$item"
+            (( ++count < 2048 )) || break
+        done < <(builtin complete -p 2>/dev/null)
+    } | /usr/local/libexec/kythos-command-suggest "--assist-shell${json}"
+}
+case $(builtin type -t kythos-assist 2>/dev/null) in
+    alias|function) ;; # A deliberately supplied user interface takes precedence.
+    *) function kythos-assist { __kythos_assist "$@"; } ;;
+esac
 [ "${KYTHOS_SUGGESTIONS:-1}" != 0 ] || return 0
 [ "${__kythos_suggestions_loaded:-0}" != 1 ] || return 0
 [[ -t 0 && -t 1 && ${TERM:-dumb} != dumb ]] || return 0
@@ -12,10 +68,44 @@ case $(builtin bind -v 2>/dev/null) in
 esac
 [[ -x /usr/local/libexec/kythos-command-suggest ]] || return 0
 
+# Readline metadata is constant during the two initialization phases. Reading
+# all three binding classes once per phase avoids spawning a new subshell for
+# every absent/private key, which is especially expensive under emulation.
+# Outside initialization, binding inspection always reads the current state so
+# a user's later changes still win when the integration is disabled.
+__kythos_binding_snapshot() {
+    local type definition key
+    __kythos_binding_cached_type=() __kythos_binding_cached_definition=()
+    for type in p s X; do
+        while IFS= read -r definition; do
+            [[ $definition == \"*\":\ * ]] || continue
+            key=${definition%%\": *}
+            key=${key#\"}
+            __kythos_binding_cached_type["$key"]=$type
+            __kythos_binding_cached_definition["$key"]=$definition
+        done < <(builtin bind -m emacs-standard -"$type" 2>/dev/null)
+    done
+    __kythos_binding_cached=1
+}
+
+__kythos_binding_snapshot_clear() {
+    unset __kythos_binding_cached_type __kythos_binding_cached_definition __kythos_binding_cached
+    unset -f __kythos_binding_snapshot __kythos_binding_snapshot_clear
+}
+
+declare -A __kythos_binding_cached_type=() __kythos_binding_cached_definition=()
+__kythos_binding_snapshot
+
 # Return a complete Readline definition without evaluating its contents.
 __kythos_binding() {
     local key=$1 type definition
     __kythos_binding_type= __kythos_binding_definition=
+    if [[ ${__kythos_binding_cached:-0} == 1 ]]; then
+        __kythos_binding_type=${__kythos_binding_cached_type[$key]-}
+        __kythos_binding_definition=${__kythos_binding_cached_definition[$key]-}
+        [[ -n $__kythos_binding_type ]]
+        return
+    fi
     for type in p s X; do
         while IFS= read -r definition; do
             if [[ $definition == \""$key"\":\ * ]]; then
@@ -31,6 +121,7 @@ __kythos_binding() {
 # Do not replace custom Tab macros, shell callbacks, or reserved private keys.
 __kythos_binding '\C-i'
 if [[ $__kythos_binding_type != p || $__kythos_binding_definition != *': complete' ]]; then
+    __kythos_binding_snapshot_clear
     unset -f __kythos_binding
     unset __kythos_binding_type __kythos_binding_definition
     return 0
@@ -45,6 +136,7 @@ for __kythos_suggestions_key in '\e[99;1~' '\e[99;2~' '\e[99;3~' '\e[99;4~'; do
     fi
 done
 if (( __kythos_suggestions_collision )); then
+    __kythos_binding_snapshot_clear
     unset -f __kythos_binding
     unset __kythos_binding_type __kythos_binding_definition __kythos_suggestions_key
     unset __kythos_suggestions_collision __kythos_suggestions_keys
@@ -152,8 +244,7 @@ __kythos_suggestions_help() {
             esac
         fi
     fi
-    if output=$(builtin printf '%s\n' "$READLINE_LINE" |
-        /usr/local/libexec/kythos-command-suggest --help-line 2>/dev/null); then
+    if output=$(__kythos_assist --explain -- "$READLINE_LINE" 2>/dev/null); then
         builtin printf '\n%s\n' "$output"
     fi
 }
@@ -269,10 +360,14 @@ for __kythos_suggestions_key in "${__kythos_suggestions_help_keys[@]}"; do
 done
 for __kythos_suggestions_key in "${__kythos_suggestions_keys[@]}"; do
     __kythos_suggestions_macro "$__kythos_suggestions_key"
+done
+__kythos_binding_snapshot
+for __kythos_suggestions_key in "${__kythos_suggestions_keys[@]}"; do
     __kythos_binding "$__kythos_suggestions_key" || :
     __kythos_suggestions_owned_type["$__kythos_suggestions_key"]=$__kythos_binding_type
     __kythos_suggestions_owned["$__kythos_suggestions_key"]=$__kythos_binding_definition
 done
+__kythos_binding_snapshot_clear
 __kythos_suggestions_clear
 __kythos_suggestions_loaded=1
 export -n __kythos_suggestions_loaded

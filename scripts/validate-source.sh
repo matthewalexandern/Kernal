@@ -23,6 +23,7 @@ for script in \
     "$repo_root/scripts/build.sh" \
     "$repo_root/scripts/build-calamares-partition.sh" \
     "$repo_root/scripts/render-branding.py" \
+    "$repo_root/scripts/stage-edition.py" \
     "$repo_root/scripts/validate-source.sh" \
     "$repo_root/tests/test-recovery-topology.sh" \
     "$repo_root/tests/test-tpm2-pcrread-parser.sh" \
@@ -46,6 +47,7 @@ for script in \
     "$repo_root/config/hooks/live/090-record-manifest.hook.chroot" \
     "$repo_root/config/includes.chroot/usr/local/bin/cy" \
     "$repo_root/config/includes.chroot/usr/local/bin/kythos-help" \
+    "$repo_root/config/includes.chroot/usr/local/bin/kythos-assist" \
     "$repo_root/config/includes.chroot/usr/local/bin/kythos-installer" \
     "$repo_root/config/includes.chroot/usr/local/bin/kythos-install" \
     "$repo_root/config/includes.chroot/usr/local/libexec/kythos-live-guard" \
@@ -61,7 +63,7 @@ for script in \
     "$repo_root/config/includes.chroot/usr/local/sbin/kythos-security-status"
 do
     case "$script" in
-        */render-branding.py)
+        */render-branding.py|*/stage-edition.py)
             python3 - "$script" <<'PY' \
                 || fail "Python syntax failed: $script"
 import pathlib
@@ -82,6 +84,8 @@ done
 # This fragment is sourced only by interactive Bash, so validate it with Bash.
 bash -n "$repo_root/config/includes.chroot/etc/profile.d/60-kythos-suggestions.sh" \
     || fail 'command suggestion Bash integration syntax failed'
+bash -n "$repo_root/config/includes.chroot/etc/profile.d/54-kythos-history.sh" \
+    || fail 'history Bash integration syntax failed'
 bash -n "$repo_root/config/includes.chroot/etc/profile.d/55-kythos-console.sh" \
     || fail 'console Bash integration syntax failed'
 
@@ -92,13 +96,17 @@ import sys
 import yaml
 root = Path(sys.argv[1])
 programs = [root / 'config/includes.chroot/usr/local/bin' / name
-            for name in ('kythos-setup', 'kythos-hardware-status', 'kythos-console')]
+            for name in ('kythos-setup', 'kythos-hardware-status', 'kythos-console', 'kythos-ssh', 'kythos-theme', 'kythos-wifi', 'kythos-smartcard-status', 'kythos-vm-status')]
 programs.append(root / 'config/includes.chroot/usr/local/sbin/kythos-fido-login')
+programs.append(root / 'config/includes.chroot/usr/local/sbin/kythos-enable-ssh')
 programs.append(root / 'config/includes.chroot/usr/local/libexec/kythos-command-suggest')
 programs.append(root / 'config/includes.chroot/usr/local/libexec/kythos-console-session')
 programs.append(root / 'config/includes.chroot/usr/local/libexec/kythos-kernel-console')
 programs.append(root / 'config/includes.chroot/usr/local/libexec/kythos-architecture')
 programs.append(root / 'scripts/check-multiarch-pair.py')
+programs.append(root / 'scripts/stage-edition.py')
+programs.append(root / 'scripts/retain-build-output.py')
+programs.append(root / 'config/includes.chroot/usr/local/libexec/kythos-edition')
 programs += sorted((root / 'config/includes.chroot/usr/local/libexec').glob('kythos-calamares-*'))
 programs += sorted((root / 'config/includes.chroot/etc/calamares/modules').glob('kythos-*/*.py'))
 for program in programs:
@@ -107,7 +115,13 @@ for config in (root / 'config/includes.chroot/etc/calamares').rglob('*'):
     if config.suffix in ('.conf', '.desc') and not isinstance(yaml.safe_load(config.read_text()), dict):
         raise ValueError('Expected installer configuration map: ' + str(config))
 PY
-for installer_test in test-installer-removal-plan.py test-calamares-core.py test-setup-wizard.py test-fido2-login.py test-hardware-status.py test-cy-help.py test-network-defaults.py test-command-suggest.py test-command-index.py test-command-suggestions-bash.py test-console-header.py test-kernel-console.py; do
+if test -z "${KYTHOS_TEST_MAN_ROOT:-}" \
+    && test -f /usr/share/man/man1/ssh-copy-id.1.gz \
+    && test -f /usr/share/man/man1/tmux.1.gz \
+    && test -f /usr/share/man/man1/git.1.gz; then
+    export KYTHOS_TEST_MAN_ROOT=/usr/share/man
+fi
+for installer_test in test-installer-removal-plan.py test-calamares-core.py test-setup-wizard.py test-fido2-login.py test-hardware-status.py test-cy-help.py test-network-defaults.py test-command-suggest.py test-command-index.py test-command-suggestions-bash.py test-console-header.py test-kernel-console.py test-ssh-setup.py test-command-assistant.py test-terminal-experience.py test-device-support.py test-editions.py test-boot-artwork.py test-build-output.py; do
     PYTHONDONTWRITEBYTECODE=1 python3 "$repo_root/tests/$installer_test" \
         || fail "installer test failed: $installer_test"
 done
@@ -116,7 +130,7 @@ check_contains "$repo_root/config/hooks/live/027-console-header.hook.chroot" \
 check_contains "$repo_root/config/includes.chroot/usr/lib/systemd/system/kythos-kernel-console.service" \
     'Before=getty-pre.target getty@tty1.service getty.target'
 check_contains "$repo_root/auto/config" 'components live-config.nocomponents=sudo,xinit'
-check_contains "$repo_root/config/bootloaders/grub-pc/grub.cfg" 'Install KythOS Kernal (Calamares)'
+check_contains "$repo_root/config/bootloaders/grub-pc/grub.cfg" 'Install KythOS Kernal™ 2027 (Calamares)'
 check_contains "$repo_root/config/bootloaders/grub-pc/grub.cfg" 'Advanced graphical installer'
 check_contains "$repo_root/config/bootloaders/grub-pc/grub.cfg" 'Advanced text installer'
 check_contains "$repo_root/config/includes.chroot/etc/sudoers.d/kythos-live-installer" \
@@ -145,7 +159,7 @@ check_contains "$config" "--ignore-system-defaults"
 check_contains "$config" 'https://snapshot.debian.org/archive/debian/'
 check_contains "$config" 'https://snapshot.debian.org/archive/debian-security/'
 check_contains "$config" 'audit=1 audit_backlog_limit=8192'
-check_contains "$repo_root/scripts/build.sh" 'find auto config scripts tests patches -type f'
+check_contains "$repo_root/scripts/build.sh" 'find auto config scripts tests patches'
 check_contains "$repo_root/scripts/build.sh" "--exclude='__pycache__/'"
 check_contains "$repo_root/scripts/build.sh" 'assets/branding/kythos-mark-cyan-source.png'
 check_contains "$repo_root/scripts/build.sh" 'tools/qemu-builder/preseed.cfg'
@@ -215,7 +229,7 @@ fi
 # shellcheck disable=SC2016
 check_contains "$config" 'version=$(cat "$repo_root/VERSION")'
 # shellcheck disable=SC2016
-check_contains "$config" '--image-name "kythos-kernal-base-${version}"'
+check_contains "$config" '--image-name "kythos-kernal-${edition}-${version}"'
 
 version=$(cat "$repo_root/VERSION")
 printf '%s\n' "$version" \
@@ -223,7 +237,7 @@ printf '%s\n' "$version" \
     || fail 'VERSION does not contain a valid release version'
 
 os_release="$repo_root/config/includes.chroot/usr/lib/os-release"
-check_contains "$os_release" "PRETTY_NAME=\"KythOS Kernal $version\""
+check_contains "$os_release" 'PRETTY_NAME="KythOS Kernal™ 2027"'
 check_contains "$os_release" 'ID=kythos'
 check_contains "$os_release" 'ID_LIKE=debian'
 check_contains "$os_release" 'VARIANT_ID=kythos'
@@ -263,16 +277,13 @@ check_contains "$plymouth_script" 'Plymouth.SetRefreshRate('
 check_contains "$plymouth_script" 'Plymouth.SetRefreshFunction('
 check_contains "$plymouth_script" 'Plymouth.SetBootProgressFunction('
 check_contains "$plymouth_script" 'Plymouth.SetQuitFunction('
-check_contains "$plymouth_script" 'fun show_trace('
-check_contains "$plymouth_script" 'fun show_sweep('
-check_contains "$plymouth_script" 'fun show_breathing('
-check_contains "$plymouth_script" 'fun show_handoff('
+check_contains "$plymouth_script" 'fun show_progress('
+check_contains "$plymouth_script" 'animation.last_progress_frame'
+check_contains "$plymouth_script" 'https://kythos.ai'
+check_contains "$plymouth_script" 'KythOS Kernal™ 2027'
 check_contains "$plymouth_script" 'Plymouth.SetDisplayPasswordFunction('
 check_contains "$plymouth_script" 'Plymouth.SetDisplayQuestionFunction('
 check_contains "$plymouth_script" 'Plymouth.SetDisplayMessageFunction('
-if grep -Eq 'Image\.Text\([^)]*KythOS' "$plymouth_script"; then
-    fail 'normal Plymouth branding must not render a KythOS wordmark'
-fi
 branding_hook="$repo_root/config/hooks/live/020-enable-branding.hook.chroot"
 check_contains "$branding_hook" 'SOURCE_DATE_EPOCH must be a decimal Unix timestamp'
 check_contains "$branding_hook" 'install -o root -g root -m 0644 "$os_release_temporary" /etc/os-release'
@@ -523,18 +534,23 @@ awk -F '\t' '
 check_contains "$stig_map" 'user-approved-deviation'
 check_contains "$stig_map" 'not-assessed'
 
-if grep -Ev '^[[:space:]]*(#|$)' \
-    "$repo_root/config/includes.chroot/etc/nftables.d/kythos-input.nft" \
-    | grep -Eq '(^|[^[:digit:]])22([^[:digit:]]|$)|ssh'; then
-    fail 'the common firewall must not expose SSH'
-fi
+check_contains "$repo_root/config/includes.chroot/etc/nftables.d/kythos-input.nft" \
+    'tcp dport 22 accept'
+test "$(readlink "$repo_root/config/includes.chroot/usr/local/bin/WiFi")" = kythos-wifi \
+    || fail 'WiFi must be the exact maintained launcher symlink'
+"$repo_root/config/includes.chroot/usr/local/libexec/kythos-edition" \
+    --edition "${KYTHOS_EDITION:-base}" >/dev/null || fail 'invalid image edition'
 
 tmp_packages=$(mktemp)
-trap 'rm -f "$tmp_packages"' EXIT HUP INT TERM
+tmp_catalogue=$(mktemp)
+tmp_available=$(mktemp)
+trap 'rm -f "$tmp_packages" "$tmp_catalogue" "$tmp_available"' EXIT HUP INT TERM
 
 {
-    for list in "$repo_root"/config/package-lists/*.list.*
+    for list in "$repo_root"/config/package-lists/*.list.* \
+        "$repo_root"/config/editions/"${KYTHOS_EDITION:-base}"/package-lists/*.list.*
     do
+        test -f "$list" || continue
         awk '!/^[[:space:]]*(#|!|$)/ { print $1 }' "$list"
     done
     "$repo_root/config/includes.chroot/usr/local/libexec/kythos-architecture" \
@@ -560,9 +576,16 @@ if test -r /etc/os-release; then
         dpkg-query -W -f='${Conffiles}\n' base-files \
             | grep -Eq '^ /etc/update-motd.d/10-uname[[:space:]]' \
             || fail 'base-files login header no longer has conffile protection'
+        # Read authenticated package metadata once rather than rebuilding the
+        # full APT cache for each package (especially costly inside TCG guests).
+        # Check each requested Package field even when APT emits a partial
+        # result and returns success for a batch containing a missing name.
+        xargs -r apt-cache --no-all-versions show -- < "$tmp_packages" > "$tmp_catalogue" \
+            || fail 'APT could not resolve every requested package'
+        awk '/^Package: / { print $2 }' "$tmp_catalogue" | LC_ALL=C sort -u > "$tmp_available"
         while IFS= read -r package
         do
-            apt-cache show "$package" >/dev/null 2>&1 \
+            grep -Fxq -- "$package" "$tmp_available" \
                 || fail "package unavailable in Debian 13: $package"
         done < "$tmp_packages"
     fi

@@ -2,11 +2,14 @@
 """Keep a local console header outside an authenticated user's shell viewport."""
 
 import os
+import ctypes
+import fcntl
 from pathlib import Path
 import re
 import shutil
 import signal
 import stat
+import struct
 import subprocess
 import sys
 import tempfile
@@ -17,9 +20,6 @@ TMUX = '/usr/bin/tmux'
 CONFIG = '/usr/share/kythos/console-tmux.conf'
 SHELL = ('/bin/bash', '-l')
 RAW_REQUESTED = 'raw-console-requested'
-# Linux OSC P sets just this virtual console's normal-blue entry (hex 4).
-# PIO_CMAP is deliberately not used: it changes global defaults and other VTs.
-PERIWINKLE_ESCAPE = b'\x1b]P49eafff'
 LOCAL_TTY = re.compile(r'/dev/tty[1-9][0-9]*\Z')
 
 
@@ -53,14 +53,20 @@ def eligible(environment=None):
         return False
 
 
-def apply_console_color(environment):
-    """Set the local VT's brand color; leave it until that VT is reset."""
-    if environment.get('KYTHOS_CONSOLE_COLOR') == '0':
-        return
+def trademark(descriptor=0):
+    """Use Unicode only when this VT's current font maps the trademark glyph."""
+    # GIO_UNIMAP is read-only; keep the current font and its palette intact.
+    # struct unimapdesc contains a native pointer to ushort unicode/font pairs.
     try:
-        os.write(1, PERIWINKLE_ESCAPE)
-    except OSError:
+        entries = (ctypes.c_ushort * (65535 * 2))()
+        request = struct.pack('@HP', 65535, ctypes.addressof(entries))
+        reply = fcntl.ioctl(descriptor, 0x4B66, request)
+        count = struct.unpack('@HP', reply)[0]
+        if any(entries[index * 2] == 0x2122 for index in range(count)):
+            return '™'
+    except (OSError, ValueError, struct.error):
         pass
+    return '[TM]'
 
 
 class SessionInterrupted(Exception):
@@ -103,6 +109,7 @@ def raw_requested(tmux, socket, environment):
 def run_session(*, tmux=TMUX, config=CONFIG, shell=SHELL, environment=None):
     """Run one private server. Parameters support isolated native PTY tests."""
     environment = dict(os.environ if environment is None else environment)
+    environment['KYTHOS_CONSOLE_BRAND'] = 'KythOS Kernal{} 2027'.format(trademark())
     directory = tempfile.mkdtemp(prefix='kythos-console-', dir=runtime_parent())
     socket = os.path.join(directory, 'socket')
     attributes = None
@@ -114,7 +121,6 @@ def run_session(*, tmux=TMUX, config=CONFIG, shell=SHELL, environment=None):
 
     try:
         attributes = termios.tcgetattr(0)
-        apply_console_color(environment)
         for number in (signal.SIGHUP, signal.SIGTERM, signal.SIGINT):
             old_handlers[number] = signal.signal(number, interrupted)
         process = subprocess.Popen([tmux, '-S', socket, '-f', config,

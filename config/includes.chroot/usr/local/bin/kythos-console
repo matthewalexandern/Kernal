@@ -87,13 +87,26 @@ def header(environment):
     return 0
 
 
+def scrollback(environment):
+    socket, pane = private_socket(environment)
+    # Reuse the same private socket boundary without injecting shell input.
+    managed = tmux_call(socket, ['show-options', '-gv', '@kythos_console_managed'], environment)
+    if managed.returncode or managed.stdout.strip() != b'1':
+        raise ValueError('This is not a managed KythOS console viewport.')
+    result = tmux_call(socket, ['copy-mode', '-t', pane], environment)
+    if result.returncode:
+        raise ValueError('Console scrollback is unavailable.')
+    return 0
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
-    if argv not in (['raw'], ['header']):
-        print('Usage: kythos-console raw | header', file=sys.stderr)
+    if argv not in (['raw'], ['header'], ['scrollback']):
+        print('Usage: kythos-console raw | header | scrollback', file=sys.stderr)
         return 2
     try:
-        return raw(dict(os.environ)) if argv == ['raw'] else header(dict(os.environ))
+        action = {'raw': raw, 'header': header, 'scrollback': scrollback}[argv[0]]
+        return action(dict(os.environ))
     except (ValueError, OSError, subprocess.SubprocessError) as exc:
         message = str(exc) if isinstance(exc, ValueError) and not isinstance(exc, UnicodeError) else 'Console mode change is unavailable.'
         print('kythos-console: ' + message, file=sys.stderr)

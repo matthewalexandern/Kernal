@@ -1,0 +1,70 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: MIT
+"""Enable installed SSH; start it immediately only on the running system.
+
+Image builders and installer chroots must never contact the host service
+manager. The service's live-session conditions provide a second guard.
+"""
+import argparse
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+
+def running_system(root=Path("/"), init_root=Path("/proc/1/root"),
+                   systemd=Path("/run/systemd/system")):
+    try:
+        current, init = root.stat(), init_root.stat()
+        return (current.st_dev, current.st_ino) == (init.st_dev, init.st_ino) and systemd.is_dir()
+    except OSError:
+        # Missing/unreadable host procfs is normal in image-building chroots.
+        return False
+
+
+def enable(offline=False, run=subprocess.run, active=None, live=None):
+    if live is None:
+        live = any(Path(path).exists() for path in ("/run/live/medium", "/run/live/overlay"))
+    if active is None:
+        active = running_system()
+    start_now = active and not offline and not live
+    if start_now:
+        # Validate before touching the live firewall. Reload replaces only the
+        # KythOS table; unrelated hypervisor/container tables are preserved.
+        run(["/usr/sbin/nft", "--check", "--file", "/etc/nftables.conf"], check=True)
+        run(["/usr/bin/systemctl", "enable", "--now", "nftables.service"], check=True)
+        run(["/usr/bin/systemctl", "reload", "nftables.service"], check=True)
+    # --root=/ forces filesystem-only operation, even when --offline was
+    # deliberately requested on a system with a running service manager.
+    manager = ["/usr/bin/systemctl"] + ([] if start_now else ["--root=/"])
+    command = manager + ["disable"]
+    if start_now:
+        command.append("--now")
+    # Debian may omit socket activation. Its absence is harmless; when present
+    # it must not compete with the explicitly enabled long-running daemon.
+    run(command + ["ssh.socket"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    command = manager + ["enable"]
+    if start_now:
+        command.append("--now")
+    run(command + ["ssh.service"], check=True)
+    return start_now
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--offline", action="store_true", help="enable for next boot without starting services (image/chroot)")
+    args = parser.parse_args(argv)
+    if os.geteuid() != 0:
+        parser.exit(1, "Run with sudo to enable SSH.\n")
+    try:
+        started = enable(offline=args.offline)
+    except (OSError, subprocess.CalledProcessError) as error:
+        print("SSH setup failed; inspect systemctl status ssh.service and journalctl -u ssh.service.\n" + str(error), file=sys.stderr)
+        return 1
+    print("SSH enabled and started; TCP port 22 is allowed by the installed KythOS firewall."
+          if started else "SSH enabled for the next installed-system boot; no services started in this image/live environment.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

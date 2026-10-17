@@ -1,0 +1,3 @@
+#!/bin/sh
+# Explicit offline inspection. Interactive Bash adds names/completion metadata.
+exec /usr/local/libexec/kythos-command-suggest --assist "$@"

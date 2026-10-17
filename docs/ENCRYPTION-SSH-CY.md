@@ -187,18 +187,96 @@ are not added to SSH; use OpenSSH's `ed25519-sk` or `ecdsa-sk` public keys for
 security-key SSH authentication. `kythos-fido-login ssh-guide` prints the
 client-side commands.
 
-## SSH password behavior
+## SSH access after installation
 
-OpenSSH is installed and enabled. Ordinary users may authenticate with a
+OpenSSH is installed, enabled, and starts automatically on the installed
+system. The common firewall permits inbound TCP port 22 on IPv4 and IPv6.
+Ordinary installer-created users may authenticate with a
 nonempty password or a public key over IPv4 or IPv6. Root login and empty
 password authentication are disabled. KythOS does not force composition,
 length, rotation, expiration, or password history rules.
 
-The common firewall still has no inbound SSH exception. A server or other
-edition must deliberately add `tcp dport 22 accept` to
-`/etc/nftables.d/kythos-input.nft` before remote clients can connect. This
-keeps the shared image closed while allowing the same SSH configuration to be
-used when an edition opens the port.
+The temporary live installer account is local-only: the SSH daemon does not
+start in a live session. Image construction deletes all build host keys. Both
+installers discard any host keys copied from a customized live filesystem;
+the installed target or its first boot generates its own host keys. Existing
+installed-system keys survive ordinary reboots and service starts. No user
+private keys, account passwords, or authorized keys are shipped.
+
+On an already running installed system with the current KythOS configuration:
+
+```sh
+sudo kythos-enable-ssh
+```
+
+This validates and reloads the KythOS firewall, disables competing socket
+activation, then runs `systemctl enable --now ssh.service`. It both enables
+future startup and starts the daemon now. In an image builder or installer
+target, `sudo kythos-enable-ssh --offline` enables the service without starting
+anything or contacting the host service manager. A detected chroot or live
+session also follows this offline path automatically. The live-session
+service conditions remain in force even if someone calls `systemctl` directly.
+
+Find the target's address with `ip -brief address` and connect from another
+machine using the account and nonempty password selected during installation:
+
+```sh
+ssh USER@TARGET_ADDRESS
+```
+
+Check `sudo systemctl status ssh.service`, `sudo journalctl -u ssh.service`,
+`sudo ss -ltnp 'sport = :22'`, and `sudo kythos-security-status` if connection
+fails. Check the client's route, VM networking mode and any host/hypervisor
+firewall as well; a NAT VM usually requires a port forward or bridged network
+before another machine can reach it. On the target, check NetworkManager's
+address and route rather than assuming the interface is online. Compare the
+host-key fingerprint shown by the client against the target's
+`sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` before accepting it.
+
+## User SSH keys: RSA 4096 by default
+
+Run this as the local user on the client, without sudo:
+
+```sh
+kythos-ssh generate
+```
+
+It calls the installed `ssh-keygen` with RSA and 4096 bits and lets OpenSSH ask
+for the private-key passphrase directly. It preserves existing private/public
+keys, including dangling symlinks; use `--file ~/.ssh/another_identity` for a
+new identity or use an existing public key. Choose another supported algorithm
+explicitly, for example `kythos-ssh generate --type ed25519` or
+`kythos-ssh generate --type ed25519-sk` for an applicable hardware authenticator.
+
+Key generation does not contact another machine. Installation is a separate,
+previewed action:
+
+```sh
+kythos-ssh install --public-key ~/.ssh/id_rsa.pub USER@TARGET_ADDRESS
+# For a deliberate noninteractive installation, add --yes.
+```
+
+The helper prints the selected key fingerprint and exact `ssh-copy-id -i`
+command, then asks for confirmation. It sends only the specified public key,
+not all keys from an agent or whichever key happens to be newest. Without
+`--public-key`, one existing suitable public key may be selected; when several
+exist, explicit selection is required. If none exists, it offers RSA generation
+and stops before installation; run the install step after creating the key.
+The public-key file must contain one plain key with a `.pub` extension. Avoid
+shell metacharacters in its path because the packaged `ssh-copy-id` cannot
+safely quote all such filenames internally. Spaces are supported.
+
+Both the installed SSH policy and helper exclude the obsolete `ssh-rsa`
+SHA-1 signature algorithm. RSA keys authenticate using `rsa-sha2-256` or
+`rsa-sha2-512`; choosing RSA does not require weakening signature negotiation.
+Administrator SSH configuration can still impose additional restrictions.
+
+`python3 tests/test-ssh-setup.py` covers key preservation/selection, generation
+and installation separation, service lifecycle decisions, live/chroot guards,
+and a real isolated loopback RSA-4096 login forced to RSA SHA-2 with strict host
+verification. That test does not prove a fresh installed VM is reachable from
+another machine or validate its installer-created password. Those checks remain
+required on the built images; see [network acceptance](NETWORKING.md).
 
 ## Package management with `cy`
 

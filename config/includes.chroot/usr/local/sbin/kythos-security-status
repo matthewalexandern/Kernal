@@ -182,11 +182,23 @@ if command -v sshd >/dev/null 2>&1; then
     else
         fail 'SSH root/empty login' 'unsafe effective SSH configuration'
     fi
+    if printf '%s\n' "$ordinary_ssh_config" \
+        | awk '/^(pubkeyacceptedalgorithms|hostkeyalgorithms) / { print $2 }' \
+        | tr ',' '\n' | grep -qx 'ssh-rsa'; then
+        fail 'SSH RSA signatures' 'obsolete SHA-1 ssh-rsa enabled'
+    else
+        pass 'SSH RSA signatures' 'RSA SHA-2 supported; SHA-1 disabled'
+    fi
+    if systemctl is-enabled --quiet ssh.service; then
+        pass 'SSH automatic startup' enabled
+    else
+        fail 'SSH automatic startup' 'ssh.service is not enabled'
+    fi
     if nft list chain inet kythos_filter input 2>/dev/null \
         | grep -Eq 'tcp dport (22|ssh).*accept'; then
-        info 'SSH network exposure' 'port 22 allowed by edition policy'
+        pass 'SSH network exposure' 'TCP port 22 allowed for installed-system access'
     else
-        pass 'SSH network exposure' 'blocked by common-base firewall'
+        fail 'SSH network exposure' 'TCP port 22 blocked; remote access cannot work'
     fi
 fi
 

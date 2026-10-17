@@ -1,18 +1,18 @@
 label live-@FLAVOUR@
-	menu label ^Start KythOS Kernal
+	menu label ^Start KythOS Kernal[TM] 2027
 	menu default
 	linux @LINUX@
 	initrd @INITRD@
 	append @APPEND_LIVE@
 
 label kythos-installer-@FLAVOUR@
-	menu label ^Install KythOS Kernal (Calamares)
+	menu label ^Install KythOS Kernal[TM] 2027 (Calamares)
 	linux @LINUX@
 	initrd @INITRD@
 	append @APPEND_LIVE@ kythos.installer=1
 
 label live-@FLAVOUR@-failsafe
-	menu label KythOS Kernal (^compatibility mode)
+	menu label KythOS Kernal[TM] 2027 (^compatibility mode)
 	linux @LINUX@
 	initrd @INITRD@
 	append @APPEND_LIVE_FAILSAFE@

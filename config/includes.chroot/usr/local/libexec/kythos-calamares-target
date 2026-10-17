@@ -66,6 +66,18 @@ def command(arguments, capture=False):
                           stdout=subprocess.PIPE if capture else None).stdout
 
 
+def installed_boot_target():
+    return json.loads(subprocess.check_output(
+        [str(Path(__file__).with_name("kythos-edition"))], text=True))["default_target"]
+
+
+def configure_edition_boot():
+    selected = installed_boot_target()
+    if selected == "graphical.target":
+        command(["/usr/bin/systemctl", "enable", "lightdm.service"])
+    command(["/usr/bin/systemctl", "set-default", selected])
+
+
 def read_os_release(path=Path("/etc/os-release")):
     return dict(line.split("=", 1) for line in path.read_text().splitlines()
                 if "=" in line and not line.startswith("#"))
@@ -397,18 +409,30 @@ def prepare(data):
     finally:
         policy.unlink(missing_ok=True)
     remove_live_files()
+    # A newly installed machine gets its own host identity, even if a builder
+    # or live-session customization created keys after the image hook ran.
+    remove_ssh_host_keys()
+    command(["/usr/local/sbin/kythos-enable-ssh", "--offline"])
     configure_autologin(data)
     if data["autologin"]:
         command(["/usr/bin/systemctl", "enable", "getty@tty1.service"])
-    command(["/usr/bin/systemctl", "set-default", "multi-user.target"])
+    configure_edition_boot()
     for unit in ("NetworkManager.service", "apparmor.service", "auditd.service", "nftables.service",
-                 "ssh.service", "systemd-timesyncd.service", "apt-daily.timer", "apt-daily-upgrade.timer",
+                 "systemd-timesyncd.service", "apt-daily.timer", "apt-daily-upgrade.timer",
                  "fstrim.timer", "kythos-kernel-console.service", "kythos-aide-initialize.timer", "dailyaidecheck.timer"):
         command(["/usr/bin/systemctl", "enable", unit])
     # A loopback DHCP lease is not a durable installed-system resolver.
     resolv = Path("/etc/resolv.conf")
     resolv.unlink(missing_ok=True)
     resolv.symlink_to("/run/NetworkManager/resolv.conf")
+
+
+def remove_ssh_host_keys(directory=Path("/etc/ssh")):
+    for path in directory.glob("ssh_host_*_key*"):
+        if path.is_file() or path.is_symlink():
+            path.unlink()
+        else:
+            raise ValueError("An unexpected host-key path prevents safe installed SSH setup.")
 
 
 def verify(data):
@@ -431,8 +455,11 @@ def verify(data):
     for path in LIVE_FILES:
         if Path(path).exists() or Path(path).is_symlink():
             raise ValueError("A live-only launcher or privilege rule remains in the target.")
-    if command(["/usr/bin/systemctl", "get-default"], capture=True).strip() != "multi-user.target":
-        raise ValueError("The common base must boot to the terminal.")
+    if command(["/usr/bin/systemctl", "get-default"], capture=True).strip() != installed_boot_target():
+        raise ValueError("The installed boot target differs from the selected image edition.")
+    if installed_boot_target() == "graphical.target" and command(
+            ["/usr/bin/systemctl", "is-enabled", "lightdm.service"], capture=True).strip() != "enabled":
+        raise ValueError("The desktop display manager is not enabled.")
     required_boot_files = ["/etc/fstab", "/etc/default/keyboard"]
     if data["install_bootloader"]:
         required_boot_files.append("/boot/grub/grub.cfg")
@@ -485,6 +512,11 @@ def verify(data):
                         ("permitrootlogin", "no"), ("permitemptypasswords", "no")):
         if ssh.get(name) != value:
             raise ValueError("The installed SSH policy is inconsistent.")
+    if any("ssh-rsa" in ssh.get(name, "").split(",")
+           for name in ("pubkeyacceptedalgorithms", "hostkeyalgorithms")):
+        raise ValueError("Obsolete RSA SHA-1 authentication must not be enabled.")
+    if command(["/usr/bin/systemctl", "is-enabled", "ssh.service"], capture=True).strip() != "enabled":
+        raise ValueError("The installed SSH service must start automatically.")
     if command(["/usr/bin/dpkg", "--audit"], capture=True).strip():
         raise ValueError("The target package database is not fully configured.")
     result = {"schema": 1, "installer": "Calamares", "product": "KythOS Kernal",

@@ -1,0 +1,48 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: MIT
+"""Read an explicit image edition; no installation-time edition selector."""
+import argparse
+import json
+from pathlib import Path
+import re
+
+SHARE = Path(__file__).resolve().parents[2] / 'share/kythos'
+
+
+def profile(edition=None):
+    if edition is None:
+        selected = SHARE / 'build-edition'
+        edition = selected.read_text().strip() if selected.exists() else 'base'
+    document = json.loads((SHARE / 'edition-profiles.json').read_text())
+    if document.get('schema') != 1 or edition not in document.get('editions', {}):
+        raise ValueError('Unsupported image edition: ' + str(edition))
+    result = dict(document['editions'][edition], edition=edition)
+    if (set(result) != {'edition', 'description', 'gui', 'default_target', 'retain_live_packages'}
+            or type(result['gui']) is not bool
+            or result['default_target'] != ('graphical.target' if result['gui'] else 'multi-user.target')
+            or not re.fullmatch(r'[a-z][a-z0-9-]*', edition)
+            or not isinstance(result['retain_live_packages'], list)
+            or any(not isinstance(name, str) or not re.fullmatch(r'[a-z0-9][a-z0-9+.-]*', name)
+                   for name in result['retain_live_packages'])):
+        raise ValueError('Invalid edition profile')
+    return result
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--edition')
+    parser.add_argument('--get', choices=('edition', 'description', 'default_target', 'gui'))
+    options = parser.parse_args()
+    try:
+        selected = profile(options.edition)
+    except (OSError, ValueError, KeyError) as error:
+        parser.exit(2, str(error) + '\n')
+    if options.get:
+        value = selected[options.get]
+        print(str(value).lower() if isinstance(value, bool) else value)
+    else:
+        print(json.dumps(selected, sort_keys=True))
+
+
+if __name__ == '__main__':
+    main()

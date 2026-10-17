@@ -97,17 +97,19 @@ class ConsoleGuards(unittest.TestCase):
                                 capture_output=True, text=True, timeout=5,
                                 env=dict(os.environ, TERM='xterm', KYTHOS_CONSOLE_HEADER='0'))
         self.assertEqual(result.returncode, 0)
-        self.assertEqual(result.stdout, r'\u@\[\e[34m\]\h\[\e[0m\]:\w\$ ')
+        self.assertEqual(result.stdout, r'\u@\h:\w\$ ')
 
-    def test_color_uses_only_per_vt_linux_sequence_with_opt_out(self):
-        with mock.patch.object(console.os, 'write') as write:
-            console.apply_console_color({})
-            write.assert_called_once_with(1, b'\x1b]P49eafff')
-            write.reset_mock()
-            console.apply_console_color({'KYTHOS_CONSOLE_COLOR': '0'})
-            write.assert_not_called()
-        with mock.patch.object(console.os, 'write', side_effect=OSError(errno.ENOTTY, 'fixture')):
-            console.apply_console_color({})
+    def test_trademark_uses_font_mapping_and_readable_fallback(self):
+        def mapped(_descriptor, operation, argument):
+            self.assertEqual(operation, 0x4B66)
+            _, pointer = struct.unpack('@HP', argument)
+            entries = (console.ctypes.c_ushort * 2).from_address(pointer)
+            entries[0], entries[1] = 0x2122, 123
+            return struct.pack('@HP', 1, pointer)
+        with mock.patch.object(console.fcntl, 'ioctl', side_effect=mapped):
+            self.assertEqual(console.trademark(), '™')
+        with mock.patch.object(console.fcntl, 'ioctl', side_effect=OSError(errno.ENOTTY, 'fixture')):
+            self.assertEqual(console.trademark(), '[TM]')
 
     def test_failure_falls_back_to_bash_without_reentry_and_signal_does_not(self):
         with mock.patch.object(console, 'eligible', return_value=True), \
@@ -329,7 +331,7 @@ class NativeViewport(unittest.TestCase):
             os.setsid()
             fcntl.ioctl(0, termios.TIOCSCTTY, 0)
 
-        self.process = subprocess.Popen(['/usr/bin/python3', '-I', str(script)], stdin=self.slave,
+        self.process = subprocess.Popen(['/usr/bin/python3', '-I', '-B', str(script)], stdin=self.slave,
                                         stdout=self.slave, stderr=self.slave, env=self.environment,
                                         preexec_fn=controlling_pty, close_fds=True)
         self.addCleanup(self.stop)
@@ -373,7 +375,7 @@ class NativeViewport(unittest.TestCase):
         return result.stdout.strip()
 
     def assert_header(self):
-        expected = 'KythOS Kernal 2027 | https://kythos.ai ' + Path(os.ttyname(self.slave)).name
+        expected = 'KythOS Kernal[TM] 2027 | https://kythos.ai ' + os.ttyname(self.slave)
         self.assertEqual(''.join(self.screen.lines[0]).rstrip(), expected)
 
     def send(self, command):
@@ -383,15 +385,15 @@ class NativeViewport(unittest.TestCase):
         self.drain(0.1)
 
     def test_native_viewport_pins_header_through_clear_scroll_alternate_screen_and_resize(self):
-        self.assertIn(b'\x1b]P49eafff', self.stream)
-        self.assertIn(b'\x1b[34m', self.stream)
+        self.assertNotIn(b'\x1b]P49eafff', self.stream)
+        self.assertIn('fg=white,bg=black', self.query('show-options', '-gv', 'status-style'))
         self.assertNotIn(b'\x1b[1m', self.stream, 'bright header must not request bold intensity')
         self.assert_header()
         self.assertNotIn('bold', self.query('show-options', '-gv', 'status-style'))
         self.assertEqual(self.query('display-message', '-p', '#{pane_height}:#{client_height}'), '23:24')
         self.assertEqual(self.query('show-options', '-gv', 'status-position'), 'top')
         self.assertEqual(self.query('show-options', '-gv', 'prefix'), 'None')
-        self.assertEqual(self.query('list-keys', '-T', 'root'), '')
+        self.assertRegex(self.query('list-keys', '-T', 'root'), r'S-PPage\s+copy-mode -u')
         prefix = subprocess.run([self.binary, '-S', self.socket, 'list-keys', '-T', 'prefix'],
                                 env=self.environment, capture_output=True, text=True, timeout=5)
         self.assertIn(prefix.returncode, (0, 1))
@@ -418,6 +420,16 @@ class NativeViewport(unittest.TestCase):
         self.assertEqual(self.process.returncode, 0)
         self.assertEqual(termios.tcgetattr(self.slave), self.attributes)
         self.assertEqual(list(self.work.glob('kythos-console-*')), [])
+
+    def test_output_scrollback_works_separately_from_shell_history_keys(self):
+        self.send("for ((i=0;i<80;i++)); do printf 'scrollback-row-%s\\n' \"$i\"; done")
+        os.write(self.master, b'\x1b[5;2~')  # Shift+PageUp, not ordinary Up.
+        self.wait_for(lambda: self.query('display-message', '-p', '#{pane_in_mode}') == '1')
+        self.assertIn('scrollback-row-', self.query('capture-pane', '-p'))
+        os.write(self.master, b'q')
+        self.wait_for(lambda: self.query('display-message', '-p', '#{pane_in_mode}') == '0')
+        self.send("printf 'normal-shell-input\\n'")
+        self.assertIn('normal-shell-input', self.query('capture-pane', '-p'))
 
     def test_real_top_after_clear_and_scroll_preserves_header_during_updates_and_exit(self):
         if not Path('/usr/bin/top').is_file():
@@ -477,8 +489,13 @@ class NativeViewport(unittest.TestCase):
             self.wait_for(lambda: b'RAW> ' in self.stream)
             self.assertEqual(list(self.work.glob('kythos-console-*')), [])
             self.stream.clear()
-            os.write(self.master, b"printf '__RAW_TTY__'; /usr/bin/tty; printf '__RAW_ENV__%s|%s\\n' \"$KYTHOS_CONSOLE_HEADER\" \"${TMUX-unset}\"; printf '__RAW_UID__'; id -u\n")
-            self.wait_for(lambda: b'__RAW_ENV__0|unset' in self.stream)
+            os.write(self.master, b"printf '__RAW_TTY__'; /usr/bin/tty; printf '__RAW_ENV__%s|%s\\n' \"$KYTHOS_CONSOLE_HEADER\" \"${TMUX-unset}\"; printf '__RAW_UID__'; id -u; printf '\\n__RAW_COMMAND_DONE__\\n'\n")
+            # The environment and UID prefix can arrive before the external
+            # id process writes its value, especially under ARM64 emulation.
+            # Wait for the completed output, not an earlier command's prefix.
+            # Newlines prevent the echoed printf command matching the marker.
+            self.wait_for(lambda: b'\r\n__RAW_COMMAND_DONE__\r\n' in self.stream)
+            self.assertIn(b'__RAW_ENV__0|unset', self.stream)
             self.assertIn(('__RAW_TTY__' + original_tty).encode(), self.stream)
             self.assertIn(('__RAW_UID__' + str(os.getuid())).encode(), self.stream)
             self.stream.clear()

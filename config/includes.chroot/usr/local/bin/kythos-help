@@ -3,8 +3,9 @@
 set -eu
 if test "$#" -eq 0 || test "${1-}" = --help || test "${1-}" = -h; then
     printf '%s\n' 'Usage: kythos-help command [arguments] | words describing a command' \
-        'In interactive Bash, F1 shows contextual help for the current line.'
+        'In interactive Bash, F1 shows contextual help for the current line.' \
+        'Use kythos-assist for completion, intent search and explicit exit-status diagnosis.'
     exit 0
 fi
-# Each word is data. The engine accepts only literal command-line text.
+# Each word is data. Shell syntax is inspected without evaluation or execution.
 printf '%s\n' "$*" | /usr/local/libexec/kythos-command-suggest --help-line

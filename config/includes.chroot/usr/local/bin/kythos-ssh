@@ -1,0 +1,170 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: MIT
+"""Create a user key or explicitly install one using packaged OpenSSH tools."""
+import argparse
+import base64
+import binascii
+import os
+from pathlib import Path
+import re
+import shlex
+import shutil
+import stat
+import subprocess
+import sys
+
+ALGORITHMS = ("rsa", "ed25519", "ecdsa", "ed25519-sk", "ecdsa-sk")
+PUBLIC_TYPE = re.compile(r"(?:ssh-rsa|ssh-ed25519|ecdsa-sha2-nistp(?:256|384|521)|sk-ssh-ed25519@openssh.com|sk-ecdsa-sha2-nistp256@openssh.com)\Z")
+
+
+def program(name):
+    path = shutil.which(name)
+    if not path:
+        raise ValueError(f"{name} is missing; install the openssh-client package.")
+    return path
+
+
+def private_path(algorithm, requested=None, home=None):
+    return Path(requested).expanduser().absolute() if requested else (home or Path.home()) / ".ssh" / ("id_" + algorithm.replace("-", "_"))
+
+
+def generate(algorithm="rsa", requested=None, comment=None, run=subprocess.run, home=None):
+    key = private_path(algorithm, requested, home)
+    public = Path(str(key) + ".pub")
+    # lexists preserves dangling symlinks too. Never ask ssh-keygen to replace
+    # an existing identity, including an orphaned public key.
+    if os.path.lexists(key) or os.path.lexists(public):
+        raise ValueError(f"Existing key files preserved at {key}; choose another --file or install the existing public key.")
+    key.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    command = [program("ssh-keygen"), "-t", algorithm]
+    if algorithm == "rsa":
+        command += ["-b", "4096"]
+    command += ["-f", str(key)]
+    if comment is not None:
+        command += ["-C", comment]
+    print("Generate only: " + shlex.join(command), flush=True)
+    print("OpenSSH will ask for a private-key passphrase. No key will be installed on a remote machine.", flush=True)
+    # Inherit the terminal. Passphrases never enter helper arguments or logs.
+    run(command, check=True)
+    print(f"Public key: {public}\nNext, install it explicitly: kythos-ssh install --public-key {shlex.quote(str(public))} USER@HOST")
+    return public
+
+
+def public_key(path):
+    path = Path(path).expanduser().absolute()
+    # Debian's maintained ssh-copy-id constructs a quoted cat command
+    # internally. Refuse characters its current eval path cannot quote safely.
+    if any(char in str(path) for char in ('$', '`', '"', '\\', '\n', '\r')):
+        raise ValueError("ssh-copy-id cannot safely use shell metacharacters in this key path; use a simple .pub filename.")
+    if not path.name.endswith(".pub"):
+        raise ValueError("Choose a public .pub file; private keys must never be copied.")
+    # Open nonblocking before checking the inode: a named pipe must not hang
+    # discovery, including if a path is replaced between a stat and open.
+    descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ValueError("The public-key path must be a regular file.")
+        if metadata.st_size > 65536:
+            raise ValueError("The public-key file is unexpectedly large.")
+        content = os.read(descriptor, 65537)
+        if len(content) > 65536:
+            raise ValueError("The public-key file is unexpectedly large.")
+    finally:
+        os.close(descriptor)
+    lines = [line for line in content.decode("utf-8").splitlines() if line.strip() and not line.lstrip().startswith("#")]
+    fields = lines[0].split() if len(lines) == 1 else []
+    if len(fields) < 2 or not PUBLIC_TYPE.fullmatch(fields[0]):
+        raise ValueError("Expected exactly one plain OpenSSH public key; private keys, authorized_keys options, and certificates are not accepted here.")
+    try:
+        decoded = base64.b64decode(fields[1], validate=True)
+        size = int.from_bytes(decoded[:4], "big")
+        if size == 0 or decoded[4:4 + size].decode("ascii") != fields[0] or len(decoded) <= 4 + size:
+            raise ValueError("Invalid SSH public-key encoding.")
+    except (binascii.Error, UnicodeError) as error:
+        raise ValueError("Invalid SSH public-key encoding.") from error
+    return path
+
+
+def choose_public(requested=None, home=None):
+    if requested:
+        return public_key(requested)
+    candidates = []
+    for path in sorted(((home or Path.home()) / ".ssh").glob("*.pub")):
+        try:
+            candidates.append(public_key(path))
+        except (OSError, ValueError):
+            continue
+    if len(candidates) > 1:
+        choices = "\n".join("  " + str(path) for path in candidates)
+        raise ValueError("Several public keys exist. Choose the intended key with --public-key:\n" + choices)
+    return candidates[0] if candidates else None
+
+
+def destination(value):
+    if not value or value.startswith("-") or any(char.isspace() or ord(char) < 32 or ord(char) == 127 for char in value):
+        raise argparse.ArgumentTypeError("Use a host alias or USER@HOST without whitespace or option prefixes.")
+    return value
+
+
+def port(value):
+    try:
+        number = int(value)
+        if 1 <= number <= 65535:
+            return number
+    except ValueError:
+        pass
+    raise argparse.ArgumentTypeError("Port must be between 1 and 65535.")
+
+
+def install(host, requested=None, port_number=None, yes=False, run=subprocess.run, home=None, prompt=input):
+    key = choose_public(requested, home)
+    if key is None:
+        print("No suitable public key found. The default is RSA 4096.\nRun: kythos-ssh generate\nChoose another algorithm with: kythos-ssh generate --type ed25519")
+        if sys.stdin.isatty() and prompt("Generate an RSA 4096 key now, without installing it? [y/N] ").strip().lower() in ("y", "yes"):
+            generate(home=home, run=run)
+        return 2
+    # Validate using the installed OpenSSH parser, not only the envelope above.
+    run([program("ssh-keygen"), "-lf", str(key)], check=True, timeout=15)
+    command = [program("ssh-copy-id"), "-i", str(key),
+               "-o", "PubkeyAcceptedAlgorithms=-ssh-rsa", "-o", "HostKeyAlgorithms=-ssh-rsa"]
+    if port_number is not None:
+        command += ["-p", str(port_number)]
+    command += ["--", destination(host)]
+    print("Proposed key installation: " + shlex.join(command), flush=True)
+    if not yes:
+        if not sys.stdin.isatty():
+            print("No changes made. Re-run in a terminal to confirm, or pass --yes for this explicit key and destination.")
+            return 2
+        if prompt("Install this public key on this destination? [y/N] ").strip().lower() not in ("y", "yes"):
+            print("No key installed.")
+            return 2
+    run(command, check=True)
+    return 0
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__, epilog="Key generation and key installation are separate actions. RSA keys authenticate with modern SHA-2 signatures.")
+    commands = parser.add_subparsers(dest="action", required=True)
+    create = commands.add_parser("generate", help="create a key; default RSA 4096; never overwrite existing keys")
+    create.add_argument("--type", "-t", choices=ALGORITHMS, default="rsa")
+    create.add_argument("--file", "-f", help="new private-key path (public key is PATH.pub)")
+    create.add_argument("--comment", "-C", help="optional public-key comment")
+    copy = commands.add_parser("install", help="preview and install one selected public key with ssh-copy-id")
+    copy.add_argument("host", type=destination)
+    copy.add_argument("--public-key", "-i", help="explicit public .pub file (required when several keys exist)")
+    copy.add_argument("--port", "-p", type=port)
+    copy.add_argument("--yes", action="store_true", help="confirm the displayed key/destination without prompting")
+    args = parser.parse_args(argv)
+    try:
+        if args.action == "generate":
+            generate(args.type, args.file, args.comment)
+            return 0
+        return install(args.host, args.public_key, args.port, args.yes)
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        print("SSH helper: " + str(error), file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,120 @@
+#!/usr/bin/python3
+"""Report guest virtualization and display observations without reconfiguring them."""
+
+import argparse
+import json
+import os
+from pathlib import Path
+import platform
+import re
+import shutil
+import subprocess
+
+
+def probe(command, timeout=5):
+    try:
+        result = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True,
+                                text=True, timeout=timeout, env={**os.environ, "LC_ALL": "C"})
+        return {"returncode": result.returncode, "output": result.stdout[:262144],
+                "error": result.stderr[:2048]}
+    except (OSError, subprocess.TimeoutExpired):
+        return {"returncode": None, "output": "", "error": "Probe unavailable or timed out."}
+
+
+def read(path):
+    try:
+        return path.read_text(errors="replace").strip()[:4096]
+    except OSError:
+        return ""
+
+
+def collect(root=Path("/"), environment=None, find=shutil.which, run=probe, machine=None):
+    environment = os.environ if environment is None else environment
+    report = {"schema": 1, "mode": "read-only", "guest_architecture": machine or platform.machine(),
+              "host_architecture": "not-observable-from-guest", "host_operating_system": "not-observable-from-guest",
+              "virtualization": "unknown", "dmi": {}, "graphics": [], "connectors": [],
+              "session_type": environment.get("XDG_SESSION_TYPE", "unknown"), "channels": {}, "probes": {},
+              "acceptance": {"apple_host": "not-tested", "display_resize": "not-tested",
+                             "gpu_acceleration": "not-tested", "physical_gpu_passthrough": "not-established"},
+              "note": "Guest observations cannot establish the Mac model, host architecture, hypervisor settings, "
+                      "working resizing or physical GPU passthrough. Compare with host-side evidence and an actual display test."}
+    for name in ("sys_vendor", "product_name", "product_version", "board_vendor"):
+        value = read(root / "sys/class/dmi/id" / name)
+        if value:
+            report["dmi"][name] = value
+    executable = find("systemd-detect-virt")
+    if executable:
+        result = run([executable, "--vm"])
+        report["probes"]["virtualization"] = result
+        observed = result["output"].strip()
+        if re.fullmatch(r"[a-z0-9-]+", observed):
+            report["virtualization"] = observed
+    executable = find("kythos-hardware-status")
+    if executable:
+        result = run([executable, "--json"], timeout=15)
+        if result["returncode"] == 0:
+            try:
+                hardware = json.loads(result["output"])
+                report["graphics"] = hardware.get("graphics", [])
+            except (ValueError, AttributeError):
+                report["probes"]["graphics_error"] = "Hardware helper returned an unreadable report."
+        else:
+            report["probes"]["graphics_error"] = result["error"] or "Hardware helper failed."
+    else:
+        report["probes"]["graphics_error"] = "kythos-hardware-status is unavailable."
+    for connector in sorted((root / "sys/class/drm").glob("card*-*")):
+        if re.fullmatch(r"card\d+-.+", connector.name):
+            report["connectors"].append({"name": connector.name, "status": read(connector / "status") or "unknown",
+                                          "modes": read(connector / "modes").splitlines()})
+    report["channels"] = {
+        "qemu_guest_agent": (root / "dev/virtio-ports/org.qemu.guest_agent.0").exists(),
+        "spice": bool(list((root / "dev/virtio-ports").glob("com.redhat.spice.*"))),
+    }
+    executable = find("systemctl")
+    if executable:
+        for name in ("qemu-guest-agent.service", "spice-vdagentd.service"):
+            report["probes"][name] = run([executable, "is-active", name])
+    if environment.get("DISPLAY"):
+        for name, arguments in (("xrandr", ["--current"]), ("glxinfo", ["-B"])):
+            executable = find(name)
+            if executable:
+                report["probes"][name] = run([executable, *arguments])
+        if report["session_type"] == "wayland":
+            report["probes"]["display_scope"] = "xrandr/glxinfo describe Xwayland; use compositor settings to validate native Wayland outputs."
+    return report
+
+
+def safe_terminal(value):
+    return "".join(character if character in "\n\t" or character.isprintable() else "?" for character in value)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--json", action="store_true", help="emit observations as JSON")
+    args = parser.parse_args(argv)
+    report = collect()
+    if args.json:
+        print(json.dumps(report, indent=2))
+    else:
+        print("KythOS guest virtualization observations")
+        print("Guest architecture: " + report["guest_architecture"])
+        print("Virtualization: " + report["virtualization"])
+        for name, value in report["dmi"].items():
+            print(name + ": " + safe_terminal(value))
+        for card in report["graphics"]:
+            print("Graphics: " + safe_terminal(str(card.get("name", "unknown"))) + ": " +
+                  safe_terminal(str(card.get("driver") or card.get("status", "unknown"))))
+        for connector in report["connectors"]:
+            print(safe_terminal(f"{connector['name']}: {connector['status']}; modes: {', '.join(connector['modes']) or 'unknown'}"))
+        print("Guest channels: " + json.dumps(report["channels"]))
+        for name, result in report["probes"].items():
+            print("\n" + name + ":")
+            print(safe_terminal((result["output"] or result["error"] or "No output.").rstrip())
+                  if isinstance(result, dict) else safe_terminal(result))
+        print("\n" + report["note"])
+        print("Apple VM acceptance procedure: docs/APPLE-VIRTUALIZATION.md in the source recipe.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

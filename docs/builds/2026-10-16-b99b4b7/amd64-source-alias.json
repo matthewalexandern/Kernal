@@ -1,0 +1,32 @@
+{
+  "utc": "2026-10-17T00:35:43.607199+00:00",
+  "source_git_commit": "b99b4b7ec90a11ef09ad3958e01ccc67363b55cd",
+  "run_id": "20261016T211515Z",
+  "existing_recipe_hook_only": true,
+  "manual_changes_made": false,
+  "normal_hook_notes_present": true,
+  "normal_missing_report_absent": true,
+  "exact_alias_only_notes_classification": true,
+  "required_grub2_tuples": [
+    [
+      "grub2",
+      "2.12-9+deb13u2"
+    ]
+  ],
+  "provided_grub2_tuples": [
+    [
+      "grub2",
+      "2.12-9+deb13u2"
+    ]
+  ],
+  "grub2_dsc_files": 1,
+  "required_grub2_nonempty": true,
+  "required_grub2_all_provided": true,
+  "binary_manifest_grub2_all_required": true,
+  "notes_match_required_grub2": true,
+  "notes_sha256": "df02305a6eb40f4117bc39d00d4ec6ab007994cbc6469ea362b9cacfb212bdd2",
+  "required_tuples_sha256": "d6dd84cffa57a08046328b2d4259d30b779b3a731207f42188a04d94f725c3ca",
+  "final_full_build_accepted": false,
+  "runtime_values_omitted": true,
+  "scope": "Pre-completion evidence that the existing normal source hook covered the guarded grub2 alias without manual changes; subsequent full-build completion is recorded separately."
+}

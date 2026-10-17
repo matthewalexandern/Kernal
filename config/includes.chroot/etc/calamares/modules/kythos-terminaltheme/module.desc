@@ -1,0 +1,6 @@
+---
+type: job
+name: kythos-terminaltheme
+interface: python
+script: main.py
+noconfig: true
